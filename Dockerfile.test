@@ -1,0 +1,49 @@
+# Test image with Playwright browsers
+FROM node:20-alpine AS test-base
+
+# Install system dependencies for Playwright
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    freetype-dev \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    curl
+
+# Tell Playwright to use the installed Chromium
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Build the application
+RUN npm run build
+
+# Install Playwright browsers
+RUN npx playwright install chromium
+
+# Set up test environment
+ENV NODE_ENV=test
+ENV DATABASE_URL="postgresql://postgres:password@db:5432/curated_content_test"
+ENV NEXTAUTH_SECRET="test-secret"
+ENV NEXTAUTH_URL="http://localhost:3000"
+ENV OPENAI_API_KEY="test-key"
+ENV ADMIN_INGEST_KEY="test-admin-key"
+ENV DOMAIN="localhost"
+ENV EMAIL="test@example.com"
+
+EXPOSE 3000
+
+CMD ["npm", "run", "test:e2e"]

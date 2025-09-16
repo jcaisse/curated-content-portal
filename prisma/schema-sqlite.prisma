@@ -1,0 +1,143 @@
+// This is your Prisma schema file for SQLite
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          String    @default("VIEWER") // ADMIN, EDITOR, VIEWER
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+  keywords Keyword[]
+  posts    Post[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Keyword {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdBy   String
+
+  user  User          @relation(fields: [createdBy], references: [id])
+  posts Post[]
+  runs  CrawlRun[]
+}
+
+model CrawlRun {
+  id          String      @id @default(cuid())
+  keywordId   String
+  status      String      @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED
+  startedAt   DateTime?
+  completedAt DateTime?
+  itemsFound  Int         @default(0)
+  itemsProcessed Int      @default(0)
+  error       String?
+  createdAt   DateTime    @default(now())
+
+  keyword Keyword @relation(fields: [keywordId], references: [id])
+  posts   Post[]
+}
+
+model Post {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  content     String?
+  url         String     @unique
+  imageUrl    String?
+  source      String
+  publishedAt DateTime?
+  status      String     @default("DRAFT") // DRAFT, REVIEW, PUBLISHED, REJECTED
+  tags        String     // JSON string of tags array
+  urlHash     String     @unique
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  keywordId String?
+  runId     String?
+  authorId  String?
+
+  keyword Keyword?   @relation(fields: [keywordId], references: [id])
+  run     CrawlRun?  @relation(fields: [runId], references: [id])
+  author  User?      @relation(fields: [authorId], references: [id])
+  related RelatedPost[] @relation("PostRelated")
+  relatedTo RelatedPost[] @relation("PostRelatedTo")
+
+  @@index([status])
+  @@index([urlHash])
+}
+
+model RelatedPost {
+  id       String @id @default(cuid())
+  postId   String
+  relatedId String
+  similarity Float
+
+  post    Post @relation("PostRelated", fields: [postId], references: [id], onDelete: Cascade)
+  related Post @relation("PostRelatedTo", fields: [relatedId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, relatedId])
+  @@index([postId])
+  @@index([relatedId])
+}
+
+model SourceConfig {
+  id        String   @id @default(cuid())
+  domain    String   @unique
+  isAllowed Boolean  @default(true)
+  rateLimit Int      @default(1000) // requests per hour
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔒 Running architecture lock checks..."
+
+# Run architecture validation
+node scripts/validate-architecture.js
+
+# Run git diff validation to catch SQLite changes
+node scripts/assert-no-sqlite-gitdiff.js
+
+echo "✅ Pre-commit checks passed!"

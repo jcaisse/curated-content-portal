@@ -1,0 +1,10 @@
+# Override for local deployment when ports 3000/5432 are busy
+
+services:
+  db:
+    ports:
+      - "5433:5432"  # Map host port 5433 to container port 5432
+    
+  app:
+    ports:
+      - "3001:3000"  # Map host port 3001 to container port 3000
