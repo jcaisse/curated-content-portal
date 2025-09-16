@@ -1,5 +1,6 @@
 import { config as loadDotenv } from 'dotenv';
 import { validateConfig as validateConfigSchema, validatePasswordStrength, validateSecretStrength, type Config } from './config-schema';
+import { initializeAuthFingerprintGuard } from '../../server/boot/auth-fingerprint';
 
 // Load environment variables
 loadDotenv();
@@ -21,6 +22,11 @@ export function loadAppConfig(): Config {
     }
     
     const config = validateConfigSchema(process.env);
+    
+    // Initialize auth fingerprint guard (only in production/staging)
+    if (config.app.nodeEnv === 'production' || config.app.nodeEnv === 'staging') {
+      initializeAuthFingerprintGuard();
+    }
     
     // Additional environment-specific validations
     if (config.app.nodeEnv === 'production' || config.app.nodeEnv === 'staging') {

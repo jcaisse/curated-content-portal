@@ -1,5 +1,12 @@
 module.exports = {
   extends: ['next/core-web-vitals'],
+  settings: {
+    "import/resolver": {
+      "typescript": {
+        "project": "./tsconfig.json"
+      }
+    }
+  },
   rules: {
     // Custom rules to prevent mock data
     'no-restricted-syntax': [

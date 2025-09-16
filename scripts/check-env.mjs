@@ -1,0 +1,195 @@
+#!/usr/bin/env node
+
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+import crypto from 'crypto';
+
+const envFilePath = join(process.cwd(), '.secrets', '.env.local');
+const nodeEnv = process.env.NODE_ENV || 'development';
+
+function validatePasswordStrength(password, env, name) {
+  if (env === 'development') {
+    return password.length >= 8;
+  }
+  
+  // Production/Staging: Strong password requirements
+  if (password.length < 20) return false;
+  
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSymbol = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(password);
+  
+  return hasUpper && hasLower && hasNumber && hasSymbol;
+}
+
+function validateSecretStrength(secret, name, minLength = 32) {
+  if (secret.length < minLength) {
+    console.error(`❌ ${name} must be at least ${minLength} characters`);
+    return false;
+  }
+  
+  // Check for common weak patterns
+  const weakPatterns = [
+    /^[a-z]+$/i, // Only letters
+    /^[0-9]+$/, // Only numbers
+    /^(.)\1+$/, // All same character
+    /password|secret|key|token|admin|test/i, // Common weak words
+  ];
+  
+  for (const pattern of weakPatterns) {
+    if (pattern.test(secret)) {
+      console.error(`❌ ${name} appears to be weak (matches pattern: ${pattern})`);
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+function isPlaceholder(value) {
+  // Check for actual placeholder patterns, not just < and > characters
+  const placeholderPatterns = [
+    /^<set-strong-password>$/,
+    /^<generate-32B-base64>$/,
+    /^<generate-32\+chars>$/,
+    /^<.*>$/, // Generic placeholder pattern
+    /^$/, // Empty value
+  ];
+  
+  return placeholderPatterns.some(pattern => pattern.test(value));
+}
+
+function checkEnv() {
+  console.log(`🔍 Checking environment configuration for ${nodeEnv}...`);
+
+  if (!existsSync(envFilePath)) {
+    console.error('❌ Environment file not found: .secrets/.env.local');
+    console.log('💡 Run: npm run env:bootstrap');
+    process.exit(1);
+  }
+
+  // Read and parse env file
+  const envContent = readFileSync(envFilePath, 'utf8');
+  const env = {};
+  
+  envContent.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...valueParts] = trimmed.split('=');
+      if (key && valueParts.length > 0) {
+        env[key.trim()] = valueParts.join('=').trim().replace(/^["']|["']$/g, '');
+      }
+    }
+  });
+
+  // Required variables
+  const requiredVars = [
+    'POSTGRES_USER',
+    'POSTGRES_PASSWORD', 
+    'POSTGRES_DB',
+    'DATABASE_URL',
+    'NEXTAUTH_URL',
+    'NEXTAUTH_SECRET',
+    'ADMIN_EMAIL',
+    'ADMIN_PASSWORD',
+    'ADMIN_INGEST_KEY'
+  ];
+
+  let hasErrors = false;
+  let hasWarnings = false;
+
+  // Check required variables
+  for (const varName of requiredVars) {
+    if (!env[varName]) {
+      const message = `❌ Required environment variable is missing: ${varName}`;
+      if (nodeEnv === 'development') {
+        console.warn(`⚠️  ${message}`);
+        hasWarnings = true;
+      } else {
+        console.error(message);
+        hasErrors = true;
+      }
+      continue;
+    }
+
+    // Check for placeholder values (more specific check)
+    if (isPlaceholder(env[varName])) {
+      const message = `❌ Environment variable contains placeholder: ${varName}`;
+      if (nodeEnv === 'development') {
+        console.warn(`⚠️  ${message}`);
+        hasWarnings = true;
+      } else {
+        console.error(message);
+        hasErrors = true;
+      }
+    }
+  }
+
+  // Validate password strength
+  if (env.POSTGRES_PASSWORD && !validatePasswordStrength(env.POSTGRES_PASSWORD, nodeEnv, 'POSTGRES_PASSWORD')) {
+    const message = '❌ POSTGRES_PASSWORD does not meet strength requirements';
+    if (nodeEnv === 'development') {
+      console.warn(`⚠️  ${message}`);
+      hasWarnings = true;
+    } else {
+      console.error(message);
+      hasErrors = true;
+    }
+  }
+
+  if (env.ADMIN_PASSWORD && !validatePasswordStrength(env.ADMIN_PASSWORD, nodeEnv, 'ADMIN_PASSWORD')) {
+    const message = '❌ ADMIN_PASSWORD does not meet strength requirements';
+    if (nodeEnv === 'development') {
+      console.warn(`⚠️  ${message}`);
+      hasWarnings = true;
+    } else {
+      console.error(message);
+      hasErrors = true;
+    }
+  }
+
+  // Validate secret strength
+  if (env.NEXTAUTH_SECRET && !validateSecretStrength(env.NEXTAUTH_SECRET, 'NEXTAUTH_SECRET')) {
+    const message = '❌ NEXTAUTH_SECRET does not meet strength requirements';
+    if (nodeEnv === 'development') {
+      console.warn(`⚠️  ${message}`);
+      hasWarnings = true;
+    } else {
+      console.error(message);
+      hasErrors = true;
+    }
+  }
+
+  if (env.ADMIN_INGEST_KEY && !validateSecretStrength(env.ADMIN_INGEST_KEY, 'ADMIN_INGEST_KEY')) {
+    const message = '❌ ADMIN_INGEST_KEY does not meet strength requirements';
+    if (nodeEnv === 'development') {
+      console.warn(`⚠️  ${message}`);
+      hasWarnings = true;
+    } else {
+      console.error(message);
+      hasErrors = true;
+    }
+  }
+
+  // Check DATABASE_URL format
+  if (env.DATABASE_URL && !env.DATABASE_URL.startsWith('postgresql://')) {
+    const message = '❌ DATABASE_URL must be a PostgreSQL connection string';
+    console.error(message);
+    hasErrors = true;
+  }
+
+  // Summary
+  if (hasErrors) {
+    console.log('\n❌ Environment validation failed');
+    process.exit(1);
+  } else if (hasWarnings) {
+    console.log('\n⚠️  Environment validation passed with warnings (development mode)');
+  } else {
+    console.log('\n✅ Environment validation passed');
+  }
+
+  console.log('🔒 All secrets are properly configured');
+}
+
+checkEnv();

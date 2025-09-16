@@ -1,7 +1,7 @@
 import OpenAI from 'openai'
 import { config } from './config'
 
-const openai = config.ai.apiKey ? new OpenAI({
+export const openai = config.ai.apiKey ? new OpenAI({
   apiKey: config.ai.apiKey,
 }) : null
 

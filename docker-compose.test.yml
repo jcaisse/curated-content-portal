@@ -1,0 +1,9 @@
+# Docker Compose override for E2E testing
+services:
+  app:
+    environment:
+      - NODE_ENV=test
+      - E2E_TEST_MODE=true
+      - E2E_AI_MODE=success
+    env_file:
+      - ./.secrets/.env.test

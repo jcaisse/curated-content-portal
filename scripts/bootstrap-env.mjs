@@ -1,21 +1,15 @@
 #!/usr/bin/env node
 
-import { randomBytes, randomUUID } from 'crypto';
-import { writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import crypto from 'crypto';
 
-/**
- * Generate a strong random string
- */
-function generateSecret(length = 32) {
-  return randomBytes(length).toString('base64').replace(/[+/=]/g, '');
-}
+const secretsDir = join(process.cwd(), '.secrets');
+const envFilePath = join(secretsDir, '.env.local');
+const exampleFilePath = join(secretsDir, '.env.local.example');
 
-/**
- * Generate a random password
- */
-function generatePassword(length = 20) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+function generateStrongPassword(length = 32) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+[]{}|;:,.<>?';
   let password = '';
   for (let i = 0; i < length; i++) {
     password += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -23,110 +17,75 @@ function generatePassword(length = 20) {
   return password;
 }
 
-/**
- * Bootstrap environment file
- */
-async function bootstrapEnv() {
-  console.log('🔧 Bootstrapping environment configuration...');
-  
-  // Generate secrets
-  const postgresPassword = generatePassword(20);
-  const nextAuthSecret = generateSecret(32);
-  const adminIngestKey = generateSecret(32);
-  
-  const envContent = `# Generated environment file for local Docker deployment
-# DO NOT COMMIT THIS FILE - it contains secrets
-
-# Database Configuration
-DATABASE_URL=postgresql://postgres:${postgresPassword}@db:5432/curated_content_portal?schema=public
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=${postgresPassword}
-POSTGRES_DB=curated_content_portal
-POSTGRES_PORT=5432
-
-# App Configuration
-APP_PORT=3000
-NODE_ENV=production
-
-# NextAuth Configuration
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=${nextAuthSecret}
-
-# OpenAI API Configuration (optional)
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4o-mini
-
-# Admin Configuration
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=ChangeMe123!
-
-# Domain and Email
-DOMAIN=localhost
-EMAIL=local@example.com
-
-# AI Configuration (disabled for local)
-AI_DISABLED=true
-
-# Admin Ingest Key
-ADMIN_INGEST_KEY=${adminIngestKey}
-
-# Content Sources Configuration
-RSS_FEED_URLS=https://example.com/feed1.xml,https://example.com/feed2.xml
-WEB_CRAWL_ENABLED=true
-CRAWL_INTERVAL_HOURS=24
-
-# File Storage Configuration
-FILE_STORAGE_STRATEGY=url_only
-
-# Content Curation Configuration
-MAX_CRAWL_ITEMS_PER_RUN=100
-CONTENT_REVIEW_THRESHOLD=0.7
-AUTO_PUBLISH_ENABLED=false
-
-# API Rate Limiting
-RATE_LIMIT_REQUESTS_PER_MINUTE=60
-RATE_LIMIT_BURST=10
-
-# Monitoring & Analytics
-ANALYTICS_ENABLED=false
-
-# Security Configuration
-BCRYPT_ROUNDS=12
-SESSION_MAX_AGE=86400
-
-# Logging
-LOG_LEVEL=info
-`;
-
-  // Ensure .secrets directory exists
-  const secretsDir = join(process.cwd(), '.secrets');
-  mkdirSync(secretsDir, { recursive: true });
-  
-  // Write the environment file
-  const envPath = join(secretsDir, '.env.local');
-  writeFileSync(envPath, envContent, 'utf8');
-  
-  console.log('✅ Environment file created successfully!');
-  console.log(`📁 Location: ${envPath}`);
-  console.log('');
-  console.log('🔐 Generated secrets:');
-  console.log(`   POSTGRES_PASSWORD: ${postgresPassword.substring(0, 8)}...`);
-  console.log(`   NEXTAUTH_SECRET: ${nextAuthSecret.substring(0, 8)}...`);
-  console.log(`   ADMIN_INGEST_KEY: ${adminIngestKey.substring(0, 8)}...`);
-  console.log('');
-  console.log('📋 Next steps:');
-  console.log('   1. docker compose up -d --build');
-  console.log('   2. docker compose exec app npx prisma migrate deploy');
-  console.log('   3. docker compose exec app npx prisma db seed || true');
-  console.log('');
-  console.log('🌐 URLs:');
-  console.log('   Public: http://localhost:3000/');
-  console.log('   Admin: http://localhost:3000/admin');
-  console.log('   Admin login: admin@example.com / ChangeMe123!');
+function generateBase64Secret(length = 32) {
+  return crypto.randomBytes(length).toString('base64').replace(/=/g, '');
 }
 
-// Run the bootstrap
-bootstrapEnv().catch((error) => {
-  console.error('❌ Bootstrap failed:', error);
-  process.exit(1);
-});
+function generateAdminIngestKey(length = 32) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let key = '';
+  for (let i = 0; i < length; i++) {
+    key += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return key;
+}
+
+async function bootstrapEnv() {
+  console.log('🔧 Bootstrapping environment configuration...');
+
+  // Create secrets directory if it doesn't exist
+  if (!existsSync(secretsDir)) {
+    mkdirSync(secretsDir, { recursive: true });
+    console.log('✅ Created .secrets directory');
+  }
+
+  // Check if example file exists
+  if (!existsSync(exampleFilePath)) {
+    console.error('❌ Example file not found: .secrets/.env.local.example');
+    console.log('💡 Please create the example file first');
+    process.exit(1);
+  }
+
+  // Read example file
+  const exampleContent = readFileSync(exampleFilePath, 'utf8');
+
+  // Generate secrets
+  const postgresPassword = generateStrongPassword(32);
+  const nextAuthSecret = generateBase64Secret(32);
+  const authSecret = generateBase64Secret(32);
+  const adminPassword = generateStrongPassword(24);
+  const adminIngestKey = generateAdminIngestKey(32);
+
+  // Replace placeholders with actual values
+  let envContent = exampleContent
+    .replace(/POSTGRES_PASSWORD=<set-strong-password>/g, `POSTGRES_PASSWORD=${postgresPassword}`)
+    .replace(/NEXTAUTH_SECRET=<generate-32B-base64>/g, `NEXTAUTH_SECRET=${nextAuthSecret}`)
+    .replace(/AUTH_SECRET=<generate-32B-base64>/g, `AUTH_SECRET=${authSecret}`)
+    .replace(/ADMIN_PASSWORD=<set-strong-password>/g, `ADMIN_PASSWORD=${adminPassword}`)
+    .replace(/ADMIN_INGEST_KEY=<generate-32\+chars>/g, `ADMIN_INGEST_KEY=${adminIngestKey}`)
+    .replace(/DATABASE_URL=postgresql:\/\/postgres:<set-strong-password>@db:5432\/app\?schema=public/g, `DATABASE_URL=postgresql://postgres:${postgresPassword}@db:5432/app?schema=public`);
+
+  // Write env file
+  writeFileSync(envFilePath, envContent);
+
+  console.log('✅ Environment file created successfully!');
+  console.log(`📁 Location: ${envFilePath}`);
+  console.log('\n🔐 Generated secrets:');
+  console.log(`   POSTGRES_PASSWORD: ${postgresPassword.substring(0, 8)}...`);
+  console.log(`   NEXTAUTH_SECRET: ${nextAuthSecret.substring(0, 8)}...`);
+  console.log(`   AUTH_SECRET: ${authSecret.substring(0, 8)}...`);
+  console.log(`   ADMIN_PASSWORD: ${adminPassword.substring(0, 8)}...`);
+  console.log(`   ADMIN_INGEST_KEY: ${adminIngestKey.substring(0, 8)}...`);
+  console.log('\n📋 Next steps:');
+  console.log('   1. npm run env:check');
+  console.log('   2. npm run compose:rebuild');
+  console.log('   3. npm run compose:up');
+  console.log('   4. npm run db:migrate');
+  console.log('   5. npm run db:seed');
+  console.log('\n🌐 URLs:');
+  console.log('   Public: http://localhost:3000/');
+  console.log('   Admin: http://localhost:3000/admin');
+  console.log(`   Admin login: admin@example.com / ${adminPassword.substring(0, 8)}...`);
+}
+
+bootstrapEnv().catch(console.error);

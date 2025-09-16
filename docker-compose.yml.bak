@@ -10,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-app}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -19,36 +19,36 @@ services:
     networks:
       - curated-network
 
-  # migrate:
-  #   image: cleanportal-app:latest
-  #   container_name: curated-content-migrate
-  #   env_file:
-  #     - ./.secrets/.env.local
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   user: "0:0"
-  #   command: >
-  #     /bin/sh -lc "
-  #       echo 'Waiting for database to be ready...' &&
-  #       echo 'Running Prisma migrations...' &&
-  #       node node_modules/.bin/prisma migrate deploy &&
-  #       echo 'Migrations completed successfully'
-  #     "
-  #   restart: "no"
-  #   networks:
-  #     - curated-network
-
-  app:
-    image: cleanportal-app:latest
-    container_name: curated-content-app
+  migrate:
+    image: app:local
+    container_name: curated-content-migrate
     env_file:
       - ./.secrets/.env.local
     depends_on:
       db:
         condition: service_healthy
+    command: >
+      /bin/sh -lc "
+        echo 'Waiting for database to be ready...' &&
+        psql \$DATABASE_URL -c 'CREATE EXTENSION IF NOT EXISTS vector;' &&
+        echo 'Running Prisma migrations...' &&
+        node node_modules/.bin/prisma migrate deploy &&
+        echo 'Migrations completed successfully'
+      "
+    restart: "no"
+    networks:
+      - curated-network
+
+  app:
+    image: app:local
+    container_name: curated-content-app
+    env_file:
+      - ./.secrets/.env.local
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "3000:3000"
     environment:
       - NODE_ENV=production
     healthcheck:

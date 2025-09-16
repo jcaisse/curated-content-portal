@@ -1,31 +1,25 @@
-import { NextResponse } from "next/server"
-import { getArchitectureHealth } from "@/lib/arch-guard"
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
 
 export async function GET() {
   try {
-    const health = await getArchitectureHealth()
+    // Test database connection
+    await db.$queryRaw`SELECT 1`;
     
     return NextResponse.json({
-      status: health.status,
+      status: "healthy",
       timestamp: new Date().toISOString(),
-      database: health.database,
-      pgvector: health.pgvector,
-      architecture: "locked",
-      errors: health.errors
-    }, { 
-      status: health.status === 'healthy' ? 200 : 500 
-    })
+      database: "connected",
+      uptime: process.uptime()
+    });
   } catch (error) {
-    return NextResponse.json(
-      {
-        status: "unhealthy",
-        timestamp: new Date().toISOString(),
-        database: "disconnected",
-        pgvector: "unknown",
-        architecture: "locked",
-        error: error instanceof Error ? error.message : "Unknown error"
-      },
-      { status: 500 }
-    )
+    console.error("Health check failed:", error);
+    
+    return NextResponse.json({
+      status: "unhealthy",
+      timestamp: new Date().toISOString(),
+      database: "disconnected",
+      error: error instanceof Error ? error.message : "Unknown error"
+    }, { status: 503 });
   }
 }

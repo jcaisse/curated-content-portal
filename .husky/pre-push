@@ -1,12 +1,12 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-echo "🔒 Running comprehensive architecture lock checks..."
+echo "🔒 Running comprehensive preflight checks..."
 
-# Run architecture validation
-node scripts/validate-architecture.js
+# Run CI preflight checks
+npm run ci:preflight
 
-# Run pgvector validation
-node scripts/validate-pgvector.js
+# Check environment
+npm run env:check
 
 echo "✅ Pre-push checks passed!"

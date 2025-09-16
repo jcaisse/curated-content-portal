@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { z } from "zod";
+
+// Validation schemas
+const createKeywordSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100, "Name too long"),
+  description: z.string().max(500, "Description too long").optional(),
+  isActive: z.boolean().default(true),
+});
+
+const updateKeywordSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100, "Name too long").optional(),
+  description: z.string().max(500, "Description too long").optional(),
+  isActive: z.boolean().optional(),
+});
 
 export async function GET(request: NextRequest) {
   try {
@@ -43,14 +57,20 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, description, isActive = true } = body;
-
-    if (!name) {
+    
+    // Validate request body
+    const validationResult = createKeywordSchema.safeParse(body);
+    if (!validationResult.success) {
       return NextResponse.json(
-        { error: "Name is required" },
+        { 
+          error: "Validation failed", 
+          details: validationResult.error.flatten().fieldErrors 
+        },
         { status: 400 }
       );
     }
+
+    const { name, description, isActive } = validationResult.data;
 
     const keyword = await db.keyword.create({
       data: {
@@ -58,6 +78,21 @@ export async function POST(request: NextRequest) {
         description,
         isActive,
         createdBy: session.user.id,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        _count: {
+          select: {
+            posts: true,
+            runs: true,
+          },
+        },
       },
     });
 

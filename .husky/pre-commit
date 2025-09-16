@@ -1,12 +1,14 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-echo "🔒 Running architecture lock checks..."
+echo "🔍 Running pre-commit validation..."
 
-# Run architecture validation
-node scripts/validate-architecture.js
+# Validate Docker Compose files
+echo "📄 Validating Docker Compose configuration..."
+npm run compose:validate
 
-# Run git diff validation to catch SQLite changes
-node scripts/assert-no-sqlite-gitdiff.js
+# Check environment configuration (warn only in dev)
+echo "🔒 Checking environment configuration..."
+npm run env:check
 
-echo "✅ Pre-commit checks passed!"
+echo "✅ Pre-commit validation passed"

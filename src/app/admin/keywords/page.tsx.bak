@@ -23,7 +23,6 @@ interface Keyword {
 }
 
 interface ExtractedKeyword {
-  priority?: string;
   name: string;
   relevance: number;
   category: string;

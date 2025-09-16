@@ -132,33 +132,98 @@ Before deploying to production:
 
 - Docker and Docker Compose
 - Node.js 20+ (for local development)
-- OpenAI API key
+- OpenAI API key (optional)
 
-### Local Development (macOS)
+### Local Development with Docker (Recommended)
+
+**Complete Setup & Runbook:**
 
 1. **Clone and setup**:
    ```bash
    git clone <repository>
    cd curated-content-portal
-   npm install
+   npm ci
    ```
 
-2. **Generate secure environment**:
+2. **Environment setup**:
    ```bash
-   # Generate secrets and create environment file
-   node scripts/bootstrap-env.mjs
+   # Bootstrap environment and secrets
+   npm run env:bootstrap
+   npm run env:check
    ```
 
-3. **Start with Docker Compose**:
+3. **Prove-the-build (verify image matches commit)**:
    ```bash
-   docker compose up -d --build
-   docker compose exec app npx prisma migrate deploy
-   docker compose exec app npx prisma db seed || true
+   # Build image with current commit SHA
+   npm run build:image
+   
+   # Verify image labels match current commit
+   npm run verify:image
    ```
 
-4. **Access the application**:
-   - App: http://localhost:3000
-   - Admin: http://localhost:3000/admin (sign in with admin@example.com / ChangeMe123!)
+4. **Start services with proper ordering**:
+   ```bash
+   # Build and start all services
+   docker compose --env-file ./.secrets/.env.local build --no-cache --pull
+   docker compose --env-file ./.secrets/.env.local up -d --force-recreate
+   ```
+
+5. **Verify service health and ordering**:
+   ```bash
+   # Check DB health and pgvector extension
+   docker compose exec db pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-app}
+   docker compose exec db psql -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-app} -c "select 1 from pg_extension where extname='vector';"
+   
+   # Verify migrations completed
+   docker compose logs migrate
+   
+   # Verify app is running
+   docker compose logs app | grep -i "ready\|listening\|started"
+   ```
+
+6. **Verify we're testing the new image**:
+   ```bash
+   # Check image labels include commit SHA
+   docker inspect $(docker compose images app --quiet) --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' && git rev-parse HEAD
+   ```
+
+7. **Access the application**:
+   - Public site: http://localhost:3000
+   - Admin panel: http://localhost:3000/admin
+   - Default admin: admin@example.com / (check bootstrap output for password)
+
+**Troubleshooting:**
+
+- **Compose warnings**: Run `docker compose config` to validate configuration
+- **Environment issues**: Run `npm run env:check` to validate secrets
+- **Architecture drift**: Run `npm run ci:preflight` to check for violations
+- **Image mismatch**: Run `npm run verify:image` to ensure image matches commit
+- **Service ordering**: Check `docker compose logs migrate` and `docker compose logs app`
+- **Database issues**: Verify pgvector with `docker compose exec db psql -U postgres -d app -c "select extname from pg_extension;"`
+- **Auth issues**: Run `npm run auth:smoke` to test credentials before E2E tests
+- **JWT session errors**: See "Secret Rotation" section below
+
+**One-liner verification**:
+```bash
+docker inspect $(docker compose images app --quiet) --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' && git rev-parse HEAD
+```
+
+## Secret Rotation
+
+If you must rotate `AUTH_SECRET`/`NEXTAUTH_SECRET`, follow these steps:
+
+1. **Set rotation flag for one run**:
+   ```bash
+   ALLOW_AUTH_SECRET_ROTATION=true docker compose --env-file ./.secrets/.env.local up -d
+   ```
+
+2. **Inform users**: They may need to log in again due to JWT session invalidation.
+
+3. **Remove rotation flag**: Don't leave `ALLOW_AUTH_SECRET_ROTATION=true` permanently.
+
+4. **For E2E tests**: Tests always start with a fresh context; they will not reuse old cookies.
+
+**Auth Fingerprint Guard**: The system detects auth secret changes and fails fast with a clear message unless rotation is explicitly allowed. This prevents JWT session errors and ensures users know when to re-authenticate.
 
 ### Production Deployment (Linux)
 
@@ -542,3 +607,217 @@ For issues and questions:
 ---
 
 **Built with ❤️ for content curation enthusiasts**
+
+## 🚀 Local Run (macOS, Docker)
+
+### One-time Setup
+
+```bash
+# Bootstrap environment (creates .secrets/.env.local with strong secrets)
+npm run env:bootstrap
+
+# Validate configuration
+npm run compose:validate
+npm run env:check
+```
+
+### Rebuild & Start
+
+```bash
+# Rebuild containers with latest code
+npm run compose:rebuild
+
+# Start all services
+npm run compose:up
+
+# Run database migrations
+npm run db:migrate
+
+# Seed database with initial data
+npm run db:seed
+```
+
+### Verify Installation
+
+```bash
+# Check container status
+docker compose ps
+
+# View application logs
+docker compose logs app --tail 20
+
+# Open application
+open http://localhost:3000/
+```
+
+### Access Points
+
+- **Public Site**: http://localhost:3000/
+- **Admin Dashboard**: http://localhost:3000/admin
+- **Health Check**: http://localhost:3000/api/health
+- **Database**: localhost:5432 (PostgreSQL with pgvector)
+
+### Admin Login
+
+After seeding, login with:
+- **Email**: admin@example.com
+- **Password**: [generated during bootstrap - check console output]
+
+### Troubleshooting
+
+#### Environment Issues
+```bash
+# Check environment validation
+npm run env:check
+
+# Re-bootstrap if needed
+npm run env:bootstrap
+```
+
+#### Container Issues
+```bash
+# View logs
+docker compose logs app --tail 50
+docker compose logs db --tail 50
+
+# Restart services
+docker compose restart app
+docker compose restart db
+
+# Full rebuild
+npm run compose:down
+npm run compose:rebuild
+npm run compose:up
+```
+
+#### Database Issues
+```bash
+# Run migrations
+npm run db:migrate
+
+# Seed database
+npm run db:seed
+
+# Check database connection
+docker compose exec app npx prisma db pull
+```
+
+### Security Notes
+
+- **Never commit** `.secrets/.env.local` - it contains real secrets
+- **Strong passwords** are auto-generated (32+ characters with symbols)
+- **Secrets are rotated** on each bootstrap
+- **Environment validation** ensures production-grade security
+- **Compose validation** prevents secret expansion vulnerabilities
+
+## 🏭 Staging/Production
+
+For staging/production environments:
+
+1. **Create environment-specific secrets**:
+   ```bash
+   cp .secrets/.env.local.example .secrets/.env.staging
+   cp .secrets/.env.local.example .secrets/.env.production
+   ```
+
+2. **Use appropriate env file**:
+   ```bash
+   docker compose --env-file ./.secrets/.env.staging up -d
+   docker compose --env-file ./.secrets/.env.production up -d
+   ```
+
+3. **Never commit real secrets** - use CI/CD secrets management
+4. **Validate before deploy**:
+   ```bash
+   NODE_ENV=production npm run env:check
+   npm run compose:validate
+   ```
+
+
+## 🚀 Permanent PostgreSQL Setup (No Drift)
+
+### One-time Setup
+
+```bash
+# Bootstrap environment with strong secrets
+npm run env:bootstrap
+
+# Validate configuration
+npm run env:check
+npm run compose:validate
+```
+
+### Build and Start (Proper Ordering)
+
+```bash
+# Build application image
+npm run compose:rebuild
+
+# Start services in correct order: DB → Migrate → App
+npm run compose:up
+
+# Verify database is healthy and pgvector is enabled
+docker compose exec db psql -U postgres -d app -c "select extname from pg_extension where extname='vector';"
+
+# Check app image labels include current commit
+npm run compose:labels
+```
+
+### Verification Commands
+
+```bash
+# Check database health
+docker compose exec db pg_isready -U postgres -d app
+
+# Verify pgvector extension
+docker compose exec db psql -U postgres -d app -c "select 1 from pg_extension where extname='vector';"
+
+# Check migration logs
+docker compose logs migrate
+
+# Check app startup logs
+docker compose logs app | grep -i "ready\|listening\|started"
+
+# Verify app health
+curl -s http://localhost:3000/api/health
+```
+
+### Service Startup Order
+
+1. **Database**: PostgreSQL with pgvector extension (healthcheck required)
+2. **Migrate**: Runs Prisma migrations (depends on DB health)
+3. **App**: Application server (depends on migrate completion)
+4. **Redis**: Cache service (independent)
+
+### Troubleshooting
+
+#### Database Issues
+```bash
+# Check database initialization
+docker compose logs db
+
+# Verify environment variables
+docker compose exec db env | grep POSTGRES
+
+# Recreate database with fresh volume
+docker compose down -v
+npm run compose:up
+```
+
+#### Migration Issues
+```bash
+# Check migration logs
+docker compose logs migrate
+
+# Run migrations manually
+docker compose exec app node node_modules/.bin/prisma migrate deploy
+```
+
+### Security Notes
+
+- **Single source of truth**: All secrets from `.secrets/.env.local`
+- **No compose expansions**: Secrets loaded via `env_file:`
+- **Proper initialization**: pgvector enabled via init SQL
+- **Health-gated startup**: App waits for DB + migrations
+- **Drift prevention**: Validation scripts prevent configuration drift
+

@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
   push:
@@ -6,26 +6,18 @@ on:
   pull_request:
     branches: [ main, master ]
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
-  test:
+  preflight:
+    name: Preflight Checks
     runs-on: ubuntu-latest
     
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: curated_content_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -36,94 +28,231 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Architecture lock checks
+    - name: Run preflight checks
       run: |
-        echo "🔒 Running architecture lock validation..."
-        npm run check:arch
-        npm run check:pgvector
-        echo "✅ Architecture lock checks passed!"
+        echo "🔒 Running preflight checks..."
+        npm run ci:preflight
+        echo "✅ Preflight checks passed!"
 
-    - name: Security checks
+  build-image:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: preflight
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build multi-arch image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        build-args: |
+          GIT_COMMIT_SHA=${{ github.sha }}
+        tags: |
+          cleanportal-app:latest
+          cleanportal-app:sha-${{ github.sha }}
+        push: false
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Verify image labels
       run: |
-        echo "🔒 Running security validation..."
-        npm run check:secrets
-        echo "✅ Security checks passed!"
-
-    - name: TODO/FIXME check
-      run: |
-        echo "📋 Checking for TODOs/FIXMEs..."
-        npm run check:todos check
-        echo "✅ TODO/FIXME checks passed!"
-
-    - name: Generate Prisma client
-      run: npx prisma generate
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/curated_content_test
-
-    - name: Run database migrations
-      run: npx prisma migrate deploy
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/curated_content_test
-
-    - name: Type check
-      run: npm run type-check
-
-    - name: Lint
-      run: npm run lint
-
-    - name: Check for Mock Data
-      run: |
-        # Check for mock data patterns, excluding comments and CSS classes
-        if grep -r -i 'lorem\|ipsum' src/ --exclude-dir=node_modules --exclude='*.css' | grep -v '//' | grep -v 'placeholder:text-muted-foreground'; then
-          echo "❌ Mock data detected in source code. Remove all placeholder/mock data."
+        echo "🔍 Verifying image labels..."
+        IMAGE_REVISION=$(docker inspect cleanportal-app:latest --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
+        echo "Image revision: $IMAGE_REVISION"
+        echo "Expected revision: ${{ github.sha }}"
+        if [ "$IMAGE_REVISION" != "${{ github.sha }}" ]; then
+          echo "❌ Image revision mismatch"
           exit 1
-        elif grep -r 'admin123\|your-.*-key' src/ --exclude-dir=node_modules | grep -v '//' | grep -v 'TODO:'; then
-          echo "❌ Mock data detected in source code. Remove all placeholder/mock data."
-          exit 1
-        else
-          echo "✅ No mock data found in source code."
         fi
+        echo "✅ Image labels verified"
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: build-image
+    
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Create environment file
+      run: |
+        mkdir -p .secrets
+        cat > .secrets/.env.ci <<'EOF'
+        POSTGRES_USER=postgres
+        POSTGRES_PASSWORD=postgres
+        POSTGRES_DB=app
+        DATABASE_URL=postgresql://postgres:postgres@db:5432/app?schema=public
+        NEXTAUTH_URL=http://localhost:3000
+        AUTH_URL=http://localhost:3000
+        AUTH_TRUST_HOST=true
+        NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET || 'dev-secret-32-characters-long' }}
+        AUTH_SECRET=${{ secrets.AUTH_SECRET || 'dev-secret-32-characters-long' }}
+        ADMIN_EMAIL=admin@example.com
+        ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD || 'TestPassword123!' }}
+        ADMIN_INGEST_KEY=${{ secrets.ADMIN_INGEST_KEY || 'test-ingest-key-32-characters' }}
+        AI_DISABLED=true
+        NODE_ENV=test
+        APP_PORT=3000
+        EOF
+
+    - name: Load Docker image
+      run: |
+        docker load < <(docker save cleanportal-app:latest | gzip)
+
+    - name: Start services
+      run: |
+        docker compose --env-file ./.secrets/.env.ci up -d --force-recreate
+        echo "⏳ Waiting for services to be ready..."
+        sleep 30
+
+    - name: Check service health
+      run: |
+        echo "🔍 Checking service health..."
+        docker compose logs migrate --no-log-prefix
+        docker compose logs app --no-log-prefix
+        
+        # Wait for app to be healthy
+        timeout 60 bash -c 'until docker compose ps app | grep -q "healthy"; do sleep 2; done'
+        echo "✅ Services are healthy"
+
+    - name: Verify image is running
+      run: |
+        echo "🔍 Verifying running image matches build..."
+        RUNNING_IMAGE=$(docker compose ps app --format "{{.Image}}" | head -1)
+        echo "Running image: $RUNNING_IMAGE"
+        
+        # Check if the image has our commit SHA
+        IMAGE_REVISION=$(docker inspect $RUNNING_IMAGE --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')
+        echo "Running image revision: $IMAGE_REVISION"
+        echo "Expected revision: ${{ github.sha }}"
+        
+        if [ "$IMAGE_REVISION" != "${{ github.sha }}" ]; then
+          echo "❌ Running image revision mismatch"
+          exit 1
+        fi
+        echo "✅ Running image matches build"
 
     - name: Run unit tests
-      run: npm run test
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/curated_content_test
-        NEXTAUTH_SECRET: test-secret
-        NEXTAUTH_URL: http://localhost:3000
-        OPENAI_API_KEY: test-key
-        ADMIN_INGEST_KEY: test-admin-key
-        DOMAIN: localhost
-        EMAIL: test@example.com
+      run: |
+        echo "🧪 Running unit tests..."
+        docker compose --env-file ./.secrets/.env.ci exec -T app npm run test
 
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps chromium
+    - name: Install Playwright
+      run: |
+        echo "📦 Installing Playwright..."
+        docker compose --env-file ./.secrets/.env.ci exec -T app npx playwright install --with-deps
 
-    - name: Build application
-      run: npm run build
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/curated_content_test
-        NEXTAUTH_SECRET: test-secret
-        NEXTAUTH_URL: http://localhost:3000
-        OPENAI_API_KEY: test-key
-        ADMIN_INGEST_KEY: test-admin-key
-        DOMAIN: localhost
-        EMAIL: test@example.com
+    - name: Run database migrations
+      run: |
+        echo "🗄️  Running database migrations..."
+        docker compose --env-file ./.secrets/.env.ci exec -T app node node_modules/.bin/prisma migrate deploy
 
-    - name: Run Playwright tests
-      run: npm run test:e2e
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/curated_content_test
-        NEXTAUTH_SECRET: test-secret
-        NEXTAUTH_URL: http://localhost:3000
-        OPENAI_API_KEY: test-key
-        ADMIN_INGEST_KEY: test-admin-key
-        DOMAIN: localhost
-        EMAIL: test@example.com
+    - name: Run auth smoke test
+      run: |
+        echo "🧪 Running auth smoke test..."
+        docker compose --env-file ./.secrets/.env.ci exec -T app npm run auth:smoke
 
-    - name: Upload Playwright Report
+    - name: Run E2E tests
+      run: |
+        echo "🎭 Running E2E tests..."
+        docker compose --env-file ./.secrets/.env.ci exec -T app npm run test:e2e
+
+    - name: Upload test results
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: playwright-report
-        path: playwright-report/
+        name: test-results
+        path: |
+          playwright-report/
+          test-results/
         retention-days: 30
+
+    - name: Cleanup
+      if: always()
+      run: |
+        docker compose down --volumes
+
+  release:
+    name: Release to Registry
+    runs-on: ubuntu-latest
+    needs: [preflight, build-image, integration]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        build-args: |
+          GIT_COMMIT_SHA=${{ github.sha }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        push: true
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Output image details
+      run: |
+        echo "📦 Released image tags:"
+        echo "${{ steps.meta.outputs.tags }}"
+        echo "🏷️  Image labels:"
+        echo "${{ steps.meta.outputs.labels }}"
