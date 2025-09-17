@@ -1,6 +1,6 @@
 import { config as loadDotenv } from 'dotenv';
 import { validateConfig as validateConfigSchema, validatePasswordStrength, validateSecretStrength, type Config } from './config-schema';
-import { initializeAuthFingerprintGuard } from '../../server/boot/auth-fingerprint';
+import { initializeAuthFingerprintGuard } from './auth-fingerprint';
 
 // Load environment variables
 loadDotenv();

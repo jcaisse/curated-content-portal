@@ -1,52 +1,40 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.6
+ARG NODE_VERSION=20
+ARG TARGETPLATFORM
 
-# Build arguments
-ARG GIT_COMMIT_SHA=local
-
-# Multi-stage build for production
-FROM node:20-alpine AS base
-
-# Install dependencies only when needed
-FROM base AS deps
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat openssl openssl-dev
+FROM node:${NODE_VERSION}-bookworm-slim AS deps
 WORKDIR /app
-
-# Install dependencies based on the preferred package manager
 COPY package.json package-lock.json* ./
-RUN \
-  if [ -f package-lock.json ]; then npm ci --frozen-lockfile; \
-  else echo "Lockfile not found." && exit 1; \
-  fi
+RUN npm ci --include=dev
 
-# Rebuild the source code only when needed
-FROM base AS builder
+FROM node:${NODE_VERSION}-bookworm-slim AS builder
 WORKDIR /app
+ARG TARGETPLATFORM
+ENV PRISMA_CLI_TELEMETRY_INFORMATION="disable"
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
 
-# Generate Prisma client with proper binary targets for Debian slim
-ENV PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x
-RUN npx prisma generate
+# Defensive clean to remove any legacy layers
+RUN rm -rf prisma/migrations && mkdir -p prisma/migrations
 
-# Build the application (skip config validation during build)
-ENV SKIP_CONFIG_VALIDATION=true
-RUN npm run build -- --no-lint
+# Copy ONLY what we need (explicit whitelist)
+COPY package.json package-lock.json* tsconfig.json next.config.* tailwind.config.* postcss.config.* ./
+COPY src src
+COPY public public
+COPY prisma prisma
+COPY scripts scripts
 
-# Production image, copy all the files and run next
-FROM node:20-bookworm-slim AS runner
+# Generate Prisma Client for the target platform at build time
+RUN node node_modules/.bin/prisma generate
+
+        # Build Next.js (skip config validation during build)
+        ENV SKIP_CONFIG_VALIDATION=true
+        RUN npm run build -- --no-lint
+
+FROM node:${NODE_VERSION}-bookworm-slim AS runner
 WORKDIR /app
-
-# Re-declare ARG for this stage
-ARG GIT_COMMIT_SHA=local
-
-# Add build labels with commit SHA
-LABEL org.opencontainers.image.revision=${GIT_COMMIT_SHA}
-LABEL org.opencontainers.image.source="https://github.com/your-org/curated-content-portal"
-LABEL org.opencontainers.image.description="Curated Content Portal - AI-powered content curation"
-
-ENV NODE_ENV production
-ENV PORT 3000
+ENV NODE_ENV=production
+# (Optional: show platform in logs)
+RUN node -e "console.log('Runtime:', process.platform, process.arch)"
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -75,9 +63,6 @@ COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 # Copy Prisma and dependencies for migrations
 COPY --from=builder /app/node_modules ./node_modules
 
-# Install Prisma CLI globally for migrations
-RUN npm install -g prisma
-
 # Copy scripts directory
 COPY --from=builder /app/scripts ./scripts
 
@@ -85,7 +70,7 @@ USER nextjs
 
 EXPOSE 3000
 
-ENV HOSTNAME "0.0.0.0"
+ENV HOSTNAME=0.0.0.0
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

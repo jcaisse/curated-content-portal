@@ -1,0 +1,29 @@
+# Block everything by default
+**
+
+# Allow only what we explicitly copy
+!package.json
+!package-lock.json
+!tsconfig.json
+!next.config.*
+!tailwind.config.*
+!postcss.config.*
+!src/**
+!public/**
+!prisma/**
+!scripts/**
+
+# Always exclude local junk
+node_modules
+.git
+.github
+.next
+.secrets
+.env*
+docker-compose*.yml
+*.md
+test-results/
+tests/
+*.log
+.DS_Store
+

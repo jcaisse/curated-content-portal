@@ -1,3 +1,5 @@
+name: curated-content-portal
+
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -19,34 +21,43 @@ services:
     networks:
       - curated-network
 
-  # migrate:
-  #   image: cleanportal-app:latest
-  #   container_name: curated-content-migrate
-  #   env_file:
-  #     - ./.secrets/.env.local
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   user: "0:0"
-  #   command: >
-  #     /bin/sh -lc "
-  #       echo 'Waiting for database to be ready...' &&
-  #       echo 'Running Prisma migrations...' &&
-  #       node node_modules/.bin/prisma migrate deploy &&
-  #       echo 'Migrations completed successfully'
-  #     "
-  #   restart: "no"
-  #   networks:
-  #     - curated-network
-
-  app:
-    image: cleanportal-app:latest
-    container_name: curated-content-app
+  migrate:
+    image: ${APP_IMAGE:-cleanportal-app:latest}
+    container_name: curated-content-migrate
     env_file:
       - ./.secrets/.env.local
     depends_on:
       db:
         condition: service_healthy
+    user: "0:0"
+    command: >
+      /bin/sh -lc "
+        echo 'Waiting for database to be ready...' &&
+        if [ -f /var/lib/postgresql/data/PG_VERSION ]; then
+          echo 'DB volume present. POSTGRES_* env will NOT change existing password.';
+        fi;
+        echo 'Running Prisma migrations...' &&
+        node node_modules/.bin/prisma migrate deploy &&
+        echo 'Running database seed...' &&
+        node prisma/seed.mjs &&
+        echo 'Running auth fingerprint check...' &&
+        node scripts/auth-fingerprint-check.mjs &&
+        echo 'Running database smoke test...' &&
+        node scripts/db-smoke.mjs &&
+        echo 'Migrations, seed, fingerprint check, and smoke test completed successfully'
+      "
+    restart: "no"
+    networks:
+      - curated-network
+
+  app:
+    image: ${APP_IMAGE:-cleanportal-app:latest}
+    container_name: curated-content-app
+    env_file:
+      - ./.secrets/.env.local
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "${APP_PORT:-3000}:3000"
     environment:

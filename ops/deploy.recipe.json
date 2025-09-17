@@ -1,0 +1,110 @@
+{
+  "name": "Curated Content Portal Deployment Recipe",
+  "version": "1.0.0",
+  "description": "Machine-readable deployment steps for repeatable deployments",
+  "environment": {
+    "default_env_file": "./.secrets/.env.local",
+    "required_vars": ["DATABASE_URL", "ADMIN_PASSWORD", "NEXTAUTH_SECRET"]
+  },
+  "steps": [
+    {
+      "name": "clean_start",
+      "cmd": "docker compose down --remove-orphans || true",
+      "expect": "exit_code:0",
+      "on_fail_hint": "Check Docker daemon is running and containers can be stopped"
+    },
+    {
+      "name": "preflight_checks",
+      "cmd": "npm run ci:preflight",
+      "expect": "exit_code:0",
+      "on_fail_hint": "Fix guard failures: no-musl, no-npx-prisma, tailwind, migrations, ts-check, lint-strict"
+    },
+    {
+      "name": "build_image",
+      "cmd": "docker compose --env-file ${ENV_FILE} build --no-cache --pull app",
+      "expect": "exit_code:0",
+      "on_fail_hint": "Check Dockerfile syntax, dependencies, and build context"
+    },
+    {
+      "name": "prove_image_integrity",
+      "cmd": "npm run ci:prove-image",
+      "expect": "exit_code:0",
+      "on_fail_hint": "Verify CSS files present, migrations match repo, Prisma engines working"
+    },
+    {
+      "name": "deploy_stack",
+      "cmd": "docker compose --env-file ${ENV_FILE} up -d --force-recreate --remove-orphans",
+      "expect": "exit_code:0",
+      "on_fail_hint": "Check compose file syntax and service dependencies"
+    },
+    {
+      "name": "wait_db_healthy",
+      "cmd": "docker compose --env-file ${ENV_FILE} ps db | grep healthy",
+      "expect": "stdout:healthy",
+      "on_fail_hint": "Check database logs, connection string, and PostgreSQL configuration"
+    },
+    {
+      "name": "wait_migrate_complete",
+      "cmd": "docker compose --env-file ${ENV_FILE} ps migrate | grep 'Exited (0)'",
+      "expect": "stdout:Exited (0)",
+      "on_fail_hint": "Check migrate logs for Prisma errors, migration files, or seed script issues"
+    },
+    {
+      "name": "wait_app_ready",
+      "cmd": "curl -sf http://localhost:3000/api/health",
+      "expect": "exit_code:0",
+      "on_fail_hint": "Check app logs for startup errors, port conflicts, or health check failures"
+    },
+    {
+      "name": "verify_migrate_logs",
+      "cmd": "docker compose --env-file ${ENV_FILE} logs migrate | grep 'Migrations, seed, fingerprint check, and smoke test completed successfully'",
+      "expect": "exit_code:0",
+      "on_fail_hint": "Check migrate service logs for missing success indicators"
+    },
+    {
+      "name": "verify_app_logs",
+      "cmd": "docker compose --env-file ${ENV_FILE} logs app | grep 'Ready in'",
+      "expect": "exit_code:0",
+      "on_fail_hint": "Check app service logs for missing ready indicator"
+    },
+    {
+      "name": "verify_http_response",
+      "cmd": "curl -s -o /dev/null -w '%{http_code}' http://localhost:3000",
+      "expect": "stdout:200",
+      "on_fail_hint": "Check application is responding correctly on port 3000"
+    }
+  ],
+  "success_criteria": [
+    "CSS files present in image",
+    "Migrations applied successfully",
+    "Admin user seeded",
+    "Auth fingerprint verified",
+    "Database smoke test passed",
+    "Application responding with HTTP 200"
+  ],
+  "rollback": {
+    "cmd": "docker compose --env-file ${ENV_FILE} down --remove-orphans",
+    "description": "Stop all services and remove containers"
+  },
+  "validation": {
+    "migrate_logs": [
+      "Waiting for database to be ready...",
+      "Running Prisma migrations...",
+      "All migrations have been successfully applied.",
+      "Running database seed...",
+      "Seed: ensured admin admin@example.com",
+      "Running auth fingerprint check...",
+      "Auth fingerprint: OK.",
+      "Running database smoke test...",
+      "DB smoke: OK [ { ok: 1 } ]",
+      "Migrations, seed, fingerprint check, and smoke test completed successfully"
+    ],
+    "app_logs": [
+      "Ready in"
+    ],
+    "http_response": {
+      "status_code": 200,
+      "headers": ["X-Powered-By: Next.js"]
+    }
+  }
+}

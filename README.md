@@ -17,6 +17,22 @@ A Pinterest-style curated content site with AI-powered content curation, built f
 
 This project enforces strict architectural invariants to prevent drift from the approved design:
 
+### Database Password Management
+
+**Important**: If you change `POSTGRES_PASSWORD` after the DB volume exists, it won't update the running database. You have two options:
+
+1. **Change password inside the running DB** (preferred):
+   ```bash
+   docker compose exec db sh -lc "psql -U postgres -c \"ALTER USER postgres WITH PASSWORD '\$POSTGRES_PASSWORD';\""
+   ```
+
+2. **Recreate the DB volume** (dev-only, data loss):
+   ```bash
+   docker compose down --remove-orphans
+   docker volume rm curated-content-portal_db-data
+   docker compose --env-file ./.secrets/.env.local up -d --force-recreate
+   ```
+
 ### Locked Architecture
 - **Database**: PostgreSQL 16 with pgvector extension (no SQLite)
 - **Runtime**: Dockerized with Docker Compose orchestration
@@ -39,6 +55,33 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for complete details.
 ## Security & Secrets Management
 
 This project enforces strong security practices with environment-based secret management and validation.
+
+### Auth Secret Fingerprinting
+
+The application uses a database-backed auth secret fingerprint system to prevent JWT session errors:
+
+**How it works:**
+- Auth secrets are fingerprinted using SHA-256 and stored in the `AppConfig` table
+- Fingerprint validation happens during the migrate step (before app starts)
+- If secrets change, startup fails with clear instructions unless rotation is allowed
+
+**Secret Rotation:**
+To rotate auth secrets safely:
+1. Set `ALLOW_AUTH_SECRET_ROTATION=true` in your environment
+2. Update your auth secrets (`AUTH_SECRET`, `NEXTAUTH_SECRET`)
+3. Restart the application - it will update the fingerprint
+4. Inform users they may need to re-login
+5. Remove the rotation flag for subsequent starts
+
+**Storage:**
+- Fingerprint stored in `AppConfig` table with key format: `auth_fpr:${NODE_ENV}`
+- No filesystem writes - completely database-backed
+- Environment-scoped (development/staging/production have separate fingerprints)
+
+**Quick Reference:**
+- The app stores a SHA-256 fingerprint of AUTH_SECRET/NEXTAUTH_SECRET in AppConfig
+- Startup will fail if it changes unexpectedly
+- To rotate intentionally: set ALLOW_AUTH_SECRET_ROTATION=true for one run, then remove it
 
 ### Secret Requirements
 
