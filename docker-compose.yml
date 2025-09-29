@@ -72,6 +72,19 @@ services:
     networks:
       - curated-network
 
+  scheduler:
+    image: ${APP_IMAGE:-cleanportal-app:latest}
+    container_name: curated-content-scheduler
+    env_file:
+      - ./.secrets/.env.local
+    depends_on:
+      db:
+        condition: service_healthy
+    command: node scripts/scheduler.mjs
+    restart: unless-stopped
+    networks:
+      - curated-network
+
   redis:
     image: redis:7-alpine
     container_name: curated-content-redis

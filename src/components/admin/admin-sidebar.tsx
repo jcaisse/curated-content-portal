@@ -10,7 +10,8 @@ import {
   Settings,
   BarChart3,
   Users,
-  Globe
+  Globe,
+  Bot
 } from "lucide-react"
 
 const navigation = [
@@ -20,9 +21,9 @@ const navigation = [
     icon: LayoutDashboard,
   },
   {
-    name: "Keywords",
-    href: "/admin/keywords",
-    icon: Search,
+    name: "Crawlers",
+    href: "/admin/crawlers",
+    icon: Bot,
   },
   {
     name: "Posts",

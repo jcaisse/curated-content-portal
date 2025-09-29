@@ -105,7 +105,8 @@ model Keyword {
 
 model CrawlRun {
   id          String      @id @default(cuid())
-  keywordId   String
+  crawlerId   String?
+  keywordId   String?
   status      CrawlStatus @default(PENDING)
   startedAt   DateTime?
   completedAt DateTime?
@@ -114,7 +115,8 @@ model CrawlRun {
   error       String?
   createdAt   DateTime    @default(now())
 
-  keyword Keyword @relation(fields: [keywordId], references: [id])
+  crawler Crawler? @relation(fields: [crawlerId], references: [id])
+  keyword Keyword? @relation(fields: [keywordId], references: [id])
   posts   Post[]
 }
 
@@ -172,4 +174,32 @@ model SourceConfig {
   rateLimit Int      @default(1000) // requests per hour
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// New Crawler models
+model Crawler {
+  id            String           @id @default(cuid())
+  name          String           @unique
+  description   String?
+  isActive      Boolean          @default(true)
+  minMatchScore Float            @default(0.75)
+  lastRunAt     DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  keywords CrawlerKeyword[]
+  runs     CrawlRun[]
+}
+
+model CrawlerKeyword {
+  id         String   @id @default(cuid())
+  crawlerId  String
+  term       String
+  source     String   @default("manual") // 'ai' | 'manual'
+  createdAt  DateTime @default(now())
+
+  crawler Crawler @relation(fields: [crawlerId], references: [id])
+
+  @@unique([crawlerId, term])
+  @@index([crawlerId])
 }

@@ -108,7 +108,7 @@ export default async function AdminDashboard() {
             {crawlRuns.map((run) => (
               <div key={run.id} className="flex items-center justify-between p-4 border rounded-lg">
                 <div className="space-y-1">
-                  <div className="font-medium">{run.keyword.name}</div>
+                  <div className="font-medium">{run.keyword?.name ?? 'N/A'}</div>
                   <div className="text-sm text-muted-foreground">
                     {run.itemsFound} items found, {run.itemsProcessed} processed
                   </div>
