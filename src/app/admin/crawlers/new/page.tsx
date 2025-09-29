@@ -1,0 +1,205 @@
+"use client"
+
+import React from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
+
+export default function NewCrawlerPage() {
+  const router = useRouter()
+  const [name, setName] = React.useState("")
+  const [description, setDescription] = React.useState("")
+  const [isActive, setIsActive] = React.useState(true)
+  const [minMatchScore, setMinMatchScore] = React.useState(0.75)
+  const [submitting, setSubmitting] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  // AI extraction state for pre-create
+  const [extractText, setExtractText] = React.useState("")
+  const [maxKeywords, setMaxKeywords] = React.useState(20)
+  const [extracting, setExtracting] = React.useState(false)
+  const [debugLines, setDebugLines] = React.useState<string[]>([])
+  const [extracted, setExtracted] = React.useState<Array<{ name: string; relevance: number; confidence: string }>>([])
+  const [selected, setSelected] = React.useState<Set<string>>(new Set())
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    try {
+      setSubmitting(true)
+      setError(null)
+      const res = await fetch("/api/admin/crawlers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name, description, isActive, minMatchScore }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => null)
+        throw new Error(j?.error || `Failed (${res.status})`)
+      }
+      const created = await res.json()
+      // If user already selected keywords, immediately add them to the new crawler
+      if (selected.size > 0) {
+        try {
+          const payload = Array.from(selected).map((term) => ({ term, source: 'ai' as const }))
+          const addRes = await fetch(`/api/admin/crawlers/${created.id}/keywords`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ keywords: payload }),
+          })
+          if (!addRes.ok) {
+            const j = await addRes.json().catch(() => null)
+            console.warn('Failed to add keywords on create:', j?.error || addRes.status)
+          }
+        } catch (err) {
+          console.warn('Add keywords error:', (err as any)?.message)
+        }
+      }
+      router.push(`/admin/crawlers/${created.id}`)
+    } catch (e: any) {
+      setError(e?.message || "Failed to create crawler")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Create Crawler</h1>
+        <Link href="/admin/crawlers"><Button variant="outline">Back</Button></Link>
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <div className="mb-4 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+          <form className="space-y-4" onSubmit={onSubmit}>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Name</label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Description</label>
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={1000} />
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-muted-foreground">Active</label>
+              <Switch checked={isActive} onCheckedChange={setIsActive} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Min Match Score (0-1)</label>
+              <Input type="number" step="0.01" min={0} max={1} value={minMatchScore}
+                onChange={(e) => setMinMatchScore(parseFloat(e.target.value))} />
+            </div>
+            <div className="pt-2">
+              <Button type="submit" disabled={submitting}>{submitting ? "Creating..." : "Create"}</Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Keyword Tools (optional)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Paste up to 5000 chars for AI extraction</label>
+              <Textarea value={extractText} onChange={(e) => setExtractText(e.target.value)} maxLength={5000} rows={8} />
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-sm">Max Keywords</label>
+              <Input type="number" min={1} max={50} value={maxKeywords} onChange={(e) => setMaxKeywords(parseInt(e.target.value || '20', 10))} className="w-24" />
+              <Button onClick={handleExtract} disabled={!extractText.trim() || extracting}>{extracting ? 'Extracting…' : 'Extract'}</Button>
+              <Button variant="outline" onClick={() => { setExtracted([]); setSelected(new Set()) }}>Clear</Button>
+            </div>
+            {extracting && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground animate-spin"></div>
+                Extracting keywords…
+              </div>
+            )}
+            {debugLines.length > 0 && (
+              <div className="mt-2 rounded border bg-muted/20 p-2 text-xs font-mono max-h-36 overflow-y-auto">
+                {debugLines.map((ln, i) => (<div key={i}>{ln}</div>))}
+              </div>
+            )}
+            {extracted.length > 0 && (
+              <div>
+                <div className="mb-2 flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setSelected(new Set(extracted.map(k => k.name)))}>Select All</Button>
+                  <Button variant="outline" size="sm" onClick={() => setSelected(new Set())}>Clear Selection</Button>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {extracted.map((k) => {
+                    const isSel = selected.has(k.name)
+                    return (
+                      <div key={k.name} className={`flex items-center justify-between rounded-md border p-2 ${isSel ? 'bg-blue-50 border-blue-300' : ''}`}>
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{k.name}</div>
+                          <div className="text-xs text-muted-foreground">relevance {(k.relevance * 100).toFixed(0)}% · {k.confidence}</div>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => toggleSelect(k.name)}>{isSel ? 'Deselect' : 'Select'}</Button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+  function toggleSelect(name: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  async function handleExtract() {
+    try {
+      setExtracting(true)
+      setError(null)
+      setDebugLines((d) => [...d, `→ Calling /api/admin/keywords/extract (len=${extractText.length}, max=${maxKeywords})`])
+      const res = await fetch('/api/admin/keywords/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ text: extractText, maxKeywords }),
+      })
+      setDebugLines((d) => [...d, `← Response ${res.status}`])
+      const data = await res.json().catch(() => ({}))
+      const kws = (data?.keywords || data?.fallbackKeywords || []) as Array<any>
+      setDebugLines((d) => [...d, `Parsed ${kws.length} keywords`])
+      const mapped = kws.map((k: any) => ({
+        name: k.name || k.term || '',
+        relevance: typeof k.relevance === 'number' ? k.relevance : 0.5,
+        confidence: (k.confidence || 'medium') as string,
+      })).filter((k: any) => k.name)
+      setExtracted(mapped)
+      setSelected(new Set(mapped.map((k) => k.name)))
+      setDebugLines((d) => [...d, `Auto-selected ${mapped.length} keywords`])
+    } catch (e: any) {
+      setError(e?.message || 'Failed to extract keywords')
+      setDebugLines((d) => [...d, `✗ Error: ${e?.message || 'unknown'}`])
+    } finally {
+      setExtracting(false)
+    }
+  }
+}
+

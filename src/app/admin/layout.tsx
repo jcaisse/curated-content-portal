@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 // UserRole is now a string type
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
+import { VersionInfo } from "@/components/admin/version-info"
 
 export default async function AdminLayout({
   children,
@@ -15,10 +16,11 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-blue-100">
       <div className="flex">
         <AdminSidebar />
         <main className="flex-1 p-8">
+          <div className="mb-4 flex justify-end"><VersionInfo /></div>
           {children}
         </main>
       </div>
