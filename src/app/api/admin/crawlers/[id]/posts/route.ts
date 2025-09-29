@@ -8,7 +8,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params
   const { searchParams } = new URL(req.url)
   const status = searchParams.get('status') || undefined
-  const posts = await db.post.findMany({ where: { crawler: { id }, ...(status ? { status } : {}) }, orderBy: { createdAt: 'desc' }, take: 100 })
+  const posts = await db.post.findMany({ where: { crawlerId: id, ...(status ? { status } : {}) }, orderBy: { createdAt: 'desc' }, take: 100 })
   return NextResponse.json(posts)
 }
 

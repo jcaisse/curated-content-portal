@@ -54,7 +54,7 @@
     "verify:image": "node scripts/verify-build.mjs",
     "prove:build": "npm run build:image && npm run verify:image",
     "auth:smoke": "node scripts/auth-smoke.mjs",
-    "ts:check": "tsc --noEmit",
+    "ts:check": "prisma generate && tsc --noEmit",
     "lint:strict": "eslint . --ext .ts,.tsx --max-warnings=0",
     "imports:validate": "node scripts/validate-alias.mjs",
     "auth:fpr:check": "node scripts/auth-fingerprint-check.mjs",
