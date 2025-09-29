@@ -66,6 +66,7 @@
     "guard:tailwind": "node scripts/guard-tailwind.mjs",
     "migrations:hash": "node scripts/migrations-hash.mjs",
     "migrations:validate": "node scripts/validate-prisma-migrations.mjs",
+    "backfill:crawlers": "node scripts/backfill-crawler-data.mjs",
     "migrations:validate:image": "node scripts/validate-migrations-in-image.mjs $(docker compose images app --quiet)",
     "deploy:local": "bash ops/deploy.sh --env-file ./.secrets/.env.local",
     "deploy:staging": "ENVIRONMENT=staging bash ops/deploy.sh --env-file ./.secrets/.env.staging",
