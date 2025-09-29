@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Card as UICard } from "@/components/ui/card"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
 type CrawlerKeyword = { id: string; term: string; source: "ai" | "manual"; createdAt: string }
 
@@ -249,6 +250,70 @@ export default function EditCrawlerPage() {
     }
   }
 
+  function SourcesSection({ id }: { id: string }) {
+    const [sources, setSources] = React.useState<Array<{ id: string; url: string; type: string; enabled: boolean }>>([])
+    const [url, setUrl] = React.useState("")
+    const [type, setType] = React.useState("rss")
+    const [loading, setLoading] = React.useState(false)
+    React.useEffect(() => { (async () => {
+      try {
+        const r = await fetch(`/api/admin/crawlers/${id}/sources`, { credentials: 'include' })
+        if (r.ok) setSources(await r.json())
+      } catch {}
+    })() }, [id])
+    async function addSource() {
+      if (!url) return
+      setLoading(true)
+      try {
+        const r = await fetch(`/api/admin/crawlers/${id}/sources`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ url, type }) })
+        if (r.ok) {
+          const created = await r.json()
+          setSources((s) => [created, ...s])
+          setUrl("")
+        }
+      } finally { setLoading(false) }
+    }
+    return (
+      <div className="space-y-3">
+        <div className="flex gap-2">
+          <Input placeholder="https://example.com/feed.xml or https://example.com" value={url} onChange={(e) => setUrl(e.target.value)} />
+          <Input className="w-28" value={type} onChange={(e) => setType(e.target.value)} />
+          <Button onClick={addSource} disabled={!url || loading}>{loading ? 'Adding…' : 'Add'}</Button>
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {sources.map((s) => (
+            <div key={s.id} className="rounded border p-2 text-sm">
+              <div className="font-mono truncate" title={s.url}>{s.url}</div>
+              <div className="text-xs text-muted-foreground">type: {s.type} · enabled: {String(s.enabled)}</div>
+            </div>
+          ))}
+          {sources.length === 0 && <div className="text-sm text-muted-foreground">No sources yet.</div>}
+        </div>
+      </div>
+    )
+  }
+
+  function PostsSection({ id }: { id: string }) {
+    const [posts, setPosts] = React.useState<Array<{ id: string; title: string; status: string; createdAt: string }>>([])
+    React.useEffect(() => { (async () => {
+      try {
+        const r = await fetch(`/api/admin/crawlers/${id}/posts?status=REVIEW`, { credentials: 'include' })
+        if (r.ok) setPosts(await r.json())
+      } catch {}
+    })() }, [id])
+    return (
+      <div className="grid grid-cols-1 gap-2">
+        {posts.map((p) => (
+          <div key={p.id} className="rounded border p-2">
+            <div className="font-medium truncate">{p.title}</div>
+            <div className="text-xs text-muted-foreground">status: {p.status} · {new Date(p.createdAt).toLocaleString()}</div>
+          </div>
+        ))}
+        {posts.length === 0 && <div className="text-sm text-muted-foreground">No posts awaiting moderation.</div>}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -327,10 +392,18 @@ export default function EditCrawlerPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Keyword Tools</CardTitle>
+          <CardTitle>Crawler Tools</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <Tabs defaultValue="keywords">
+            <TabsList>
+              <TabsTrigger value="keywords">Keywords</TabsTrigger>
+              <TabsTrigger value="sources">Sources</TabsTrigger>
+              <TabsTrigger value="posts">Posts</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="keywords">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium">Paste up to 5000 chars for AI extraction</label>
@@ -408,7 +481,17 @@ export default function EditCrawlerPage() {
                 )}
               </div>
             </div>
-          </div>
+            </div>
+            </TabsContent>
+
+            <TabsContent value="sources">
+              <SourcesSection id={id} />
+            </TabsContent>
+
+            <TabsContent value="posts">
+              <PostsSection id={id} />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>

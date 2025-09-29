@@ -139,10 +139,12 @@ model Post {
   keywordId String?
   runId     String?
   authorId  String?
+  crawlerId String?
 
   keyword Keyword?   @relation(fields: [keywordId], references: [id])
   run     CrawlRun?  @relation(fields: [runId], references: [id])
   author  User?      @relation(fields: [authorId], references: [id])
+  crawler Crawler?   @relation(fields: [crawlerId], references: [id])
   related RelatedPost[] @relation("PostRelated")
   relatedTo RelatedPost[] @relation("PostRelatedTo")
 
@@ -150,6 +152,7 @@ model Post {
   @@index([urlHash])
   @@index([publishedAt])
   @@index([createdAt])
+  @@index([crawlerId])
   // Vector index will be created via raw SQL migration
 }
 
@@ -202,4 +205,20 @@ model CrawlerKeyword {
 
   @@unique([crawlerId, term])
   @@index([crawlerId])
+}
+
+model CrawlerSource {
+  id         String   @id @default(cuid())
+  crawlerId  String
+  type       String   // 'rss' | 'web'
+  url        String
+  enabled    Boolean  @default(true)
+  lastStatus String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  crawler Crawler @relation(fields: [crawlerId], references: [id])
+
+  @@unique([crawlerId, url])
+  @@index([crawlerId, enabled])
 }
