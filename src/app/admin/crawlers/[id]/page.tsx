@@ -273,6 +273,14 @@ export default function EditCrawlerPage() {
         }
       } finally { setLoading(false) }
     }
+    async function toggleEnabled(srcId: string, enabled: boolean) {
+      await fetch(`/api/admin/crawlers/${id}/sources/${srcId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ enabled }) })
+      setSources((s) => s.map(x => x.id === srcId ? { ...x, enabled } : x))
+    }
+    async function removeSource(srcId: string) {
+      await fetch(`/api/admin/crawlers/${id}/sources/${srcId}`, { method: 'DELETE', credentials: 'include' })
+      setSources((s) => s.filter(x => x.id !== srcId))
+    }
     return (
       <div className="space-y-3">
         <div className="flex gap-2">
@@ -285,6 +293,10 @@ export default function EditCrawlerPage() {
             <div key={s.id} className="rounded border p-2 text-sm">
               <div className="font-mono truncate" title={s.url}>{s.url}</div>
               <div className="text-xs text-muted-foreground">type: {s.type} · enabled: {String(s.enabled)}</div>
+              <div className="mt-2 flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => toggleEnabled(s.id, !s.enabled)}>{s.enabled ? 'Disable' : 'Enable'}</Button>
+                <Button size="sm" variant="destructive" onClick={() => removeSource(s.id)}>Remove</Button>
+              </div>
             </div>
           ))}
           {sources.length === 0 && <div className="text-sm text-muted-foreground">No sources yet.</div>}
@@ -301,12 +313,20 @@ export default function EditCrawlerPage() {
         if (r.ok) setPosts(await r.json())
       } catch {}
     })() }, [id])
+    async function setStatus(postId: string, status: 'PUBLISHED' | 'REJECTED') {
+      const r = await fetch(`/api/admin/crawlers/${id}/posts`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ postId, status }) })
+      if (r.ok) setPosts((ps) => ps.filter(p => p.id !== postId))
+    }
     return (
       <div className="grid grid-cols-1 gap-2">
         {posts.map((p) => (
           <div key={p.id} className="rounded border p-2">
             <div className="font-medium truncate">{p.title}</div>
             <div className="text-xs text-muted-foreground">status: {p.status} · {new Date(p.createdAt).toLocaleString()}</div>
+            <div className="mt-2 flex gap-2">
+              <Button size="sm" onClick={() => setStatus(p.id, 'PUBLISHED')}>Publish</Button>
+              <Button size="sm" variant="destructive" onClick={() => setStatus(p.id, 'REJECTED')}>Reject</Button>
+            </div>
           </div>
         ))}
         {posts.length === 0 && <div className="text-sm text-muted-foreground">No posts awaiting moderation.</div>}
