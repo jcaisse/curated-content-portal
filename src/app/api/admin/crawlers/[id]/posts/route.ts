@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { PostStatus } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 
@@ -7,8 +8,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const { searchParams } = new URL(req.url)
-  const status = searchParams.get('status') || undefined
-  const posts = await db.post.findMany({ where: { crawlerId: id, ...(status ? { status } : {}) }, orderBy: { createdAt: 'desc' }, take: 100 })
+  const statusParam = searchParams.get('status')
+  const status = statusParam && Object.prototype.hasOwnProperty.call(PostStatus, statusParam) ? (statusParam as keyof typeof PostStatus, PostStatus[statusParam as keyof typeof PostStatus]) : undefined
+  const where: any = { crawlerId: id }
+  if (status) where.status = status
+  const posts = await db.post.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 })
   return NextResponse.json(posts)
 }
 
