@@ -192,6 +192,8 @@ model Crawler {
 
   keywords CrawlerKeyword[]
   runs     CrawlRun[]
+  posts    Post[]
+  sources  CrawlerSource[]
 }
 
 model CrawlerKeyword {
