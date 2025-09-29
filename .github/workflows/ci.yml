@@ -68,6 +68,9 @@ jobs:
           PORT=3000
           EOF
 
+      - name: Generate build info
+        run: node scripts/generate-build-info.js
+
       - name: Build app image
         run: |
           docker build -t cleanportal-app:ci .
