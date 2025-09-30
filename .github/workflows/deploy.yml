@@ -1,0 +1,32 @@
+name: Deploy (main)
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build image with SHA tag
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+          tags: |
+            cleanportal-app:sha-${{ github.sha }}
+          push: false
+      - name: Generate build info
+        run: node scripts/generate-build-info.js
+      - name: Archive build info
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-info
+          path: public/build-info.json
+
+
