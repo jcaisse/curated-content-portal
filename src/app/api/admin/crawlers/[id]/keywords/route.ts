@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { z } from "zod";
+import { NextRequest, NextResponse } from "next/server"
+import { db } from "@/lib/db"
+import { requireAdmin } from "@/lib/api/guards"
+import { crawlerIdParam } from "@/lib/api/validators"
+import { z } from "zod"
 
 const addKeywordsSchema = z.object({
   keywords: z.array(z.object({
@@ -15,24 +16,22 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth();
-    if (!session?.user || session.user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdmin()
+    if (!guard.authorized) return guard.response
 
-    const { id } = await params;
-    const crawler = await db.crawler.findUnique({ where: { id } });
-    if (!crawler) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const { id } = crawlerIdParam.parse(await params)
+    const crawler = await db.crawler.findUnique({ where: { id } })
+    if (!crawler) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     const items = await db.crawlerKeyword.findMany({
       where: { crawlerId: id },
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json(items);
+    return NextResponse.json(items)
   } catch (error) {
-    console.error("Error listing crawler keywords:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Error listing crawler keywords:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
@@ -41,26 +40,24 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth();
-    if (!session?.user || session.user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdmin()
+    if (!guard.authorized) return guard.response
 
-    const { id } = await params;
-    const body = await request.json();
-    const parsed = addKeywordsSchema.safeParse(body);
+    const { id } = crawlerIdParam.parse(await params)
+    const body = await request.json()
+    const parsed = addKeywordsSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      );
+        { status: 400 },
+      )
     }
 
-    const { keywords } = parsed.data;
-    const uniqueTerms = Array.from(new Set(keywords.map(k => k.term.trim()).filter(Boolean)));
+    const { keywords } = parsed.data
+    const uniqueTerms = Array.from(new Set(keywords.map((k) => k.term.trim()).filter(Boolean)))
 
-    const created: any[] = [];
-    const skipped: string[] = [];
+    const created: any[] = []
+    const skipped: string[] = []
     for (const term of uniqueTerms) {
       try {
         const item = await db.crawlerKeyword.create({
@@ -70,21 +67,21 @@ export async function POST(
             source: (keywords.find(k => k.term === term)?.source ?? "manual") as "ai" | "manual",
           },
         });
-        created.push(item);
+        created.push(item)
       } catch (e: any) {
         // Unique violation -> already exists
         if (e?.message?.includes("Unique constraint")) {
-          skipped.push(term);
+          skipped.push(term)
         } else {
-          throw e;
+          throw e
         }
       }
     }
 
-    return NextResponse.json({ createdCount: created.length, skipped, items: created }, { status: 201 });
+    return NextResponse.json({ createdCount: created.length, skipped, items: created }, { status: 201 })
   } catch (error) {
-    console.error("Error adding crawler keywords:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Error adding crawler keywords:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 

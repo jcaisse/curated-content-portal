@@ -8,10 +8,47 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
-import { Card as UICard } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/components/ui/use-toast"
+import { cn } from "@/lib/utils"
+import { moderationStatusSchema } from "@/lib/api/validators"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Loader2, RefreshCcw, Check, X, Archive, ExternalLink } from "lucide-react"
+import { formatDistanceToNow } from "date-fns"
 
 type CrawlerKeyword = { id: string; term: string; source: "ai" | "manual"; createdAt: string }
+
+type ModerationStatus = "PENDING" | "APPROVED" | "REJECTED" | "ARCHIVED"
+const moderationStatuses: ModerationStatus[] = moderationStatusSchema.options as ModerationStatus[]
+
+type ModerationItem = {
+  id: string
+  url: string
+  urlHash: string
+  title: string
+  summary?: string | null
+  content?: string | null
+  imageUrl?: string | null
+  author?: string | null
+  source: string
+  language?: string | null
+  score: number
+  status: ModerationStatus
+  discoveredAt: string
+  decidedAt?: string | null
+  decidedBy?: string | null
+  rejectionReason?: string | null
+}
+
+type PortalSettings = {
+  subdomain: string | null
+  title: string | null
+  description: string | null
+  theme: Record<string, unknown> | null
+  updatedAt: string
+}
 
 export default function EditCrawlerPage() {
   const router = useRouter()
@@ -37,6 +74,7 @@ export default function EditCrawlerPage() {
   const [stats, setStats] = React.useState<{ lastHour?: any; lastDay?: any; lastWeek?: any }>({})
   const [extracting, setExtracting] = React.useState(false)
   const [debugLines, setDebugLines] = React.useState<string[]>([])
+  const [activeTab, setActiveTab] = React.useState<string>("keywords")
 
   const load = React.useCallback(async () => {
     try {
@@ -60,7 +98,7 @@ export default function EditCrawlerPage() {
     if (id) load()
   }, [id, load])
 
-  async function loadKeywords() {
+  const loadKeywords = React.useCallback(async () => {
     if (!id) return
     try {
       const res = await fetch(`/api/admin/crawlers/${id}/keywords`, { credentials: "include" })
@@ -69,22 +107,23 @@ export default function EditCrawlerPage() {
         setKeywords(list)
       }
     } catch {}
-  }
+  }, [id])
 
   React.useEffect(() => {
     loadKeywords()
+  }, [loadKeywords])
+
+  const loadStats = React.useCallback(async () => {
+    if (!id) return
+    try {
+      const res = await fetch(`/api/admin/crawlers/${id}/stats`, { credentials: "include" })
+      if (res.ok) setStats(await res.json())
+    } catch {}
   }, [id])
 
   React.useEffect(() => {
-    async function loadStats() {
-      if (!id) return
-      try {
-        const res = await fetch(`/api/admin/crawlers/${id}/stats`, { credentials: 'include' })
-        if (res.ok) setStats(await res.json())
-      } catch {}
-    }
     loadStats()
-  }, [id])
+  }, [loadStats])
 
   async function save() {
     try {
@@ -415,10 +454,12 @@ export default function EditCrawlerPage() {
           <CardTitle>Crawler Tools</CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="keywords">
-            <TabsList>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="flex flex-wrap gap-2">
               <TabsTrigger value="keywords">Keywords</TabsTrigger>
               <TabsTrigger value="sources">Sources</TabsTrigger>
+              <TabsTrigger value="queue">Moderation Queue</TabsTrigger>
+              <TabsTrigger value="portal">Portal</TabsTrigger>
               <TabsTrigger value="posts">Posts</TabsTrigger>
             </TabsList>
 
@@ -508,12 +549,432 @@ export default function EditCrawlerPage() {
               <SourcesSection id={id} />
             </TabsContent>
 
+            <TabsContent value="queue">
+              <ModerationQueueSection
+                crawlerId={id}
+                onActionComplete={() => {
+                  loadKeywords()
+                  loadStats()
+                }}
+              />
+            </TabsContent>
+
+            <TabsContent value="portal">
+              <PortalSettingsSection crawlerId={id} />
+            </TabsContent>
+
             <TabsContent value="posts">
               <PostsSection id={id} />
             </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+function ModerationQueueSection({ crawlerId, onActionComplete }: { crawlerId: string; onActionComplete?: () => void }) {
+  const [items, setItems] = React.useState<ModerationItem[]>([])
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
+  const [statusFilter, setStatusFilter] = React.useState<ModerationStatus>("PENDING")
+  const [loading, setLoading] = React.useState(false)
+  const [isActionPending, setIsActionPending] = React.useState(false)
+  const { toast } = useToast()
+
+  const loadItems = React.useCallback(async () => {
+    if (!crawlerId) return
+    try {
+      setLoading(true)
+      const query = new URLSearchParams({ status: statusFilter }).toString()
+      const res = await fetch(`/api/admin/crawlers/${crawlerId}/moderation?${query}`, {
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error(`Failed to load (${res.status})`)
+      const data = (await res.json()) as ModerationItem[]
+      setItems(data)
+      setSelectedIds(new Set())
+    } catch (error: any) {
+      toast({ title: "Failed to load moderation queue", description: error?.message, variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }, [crawlerId, statusFilter, toast])
+
+  React.useEffect(() => {
+    loadItems()
+  }, [loadItems])
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      if (prev.size === items.length) return new Set()
+      return new Set(items.map((item) => item.id))
+    })
+  }
+
+  const runAction = async (action: "APPROVE" | "REJECT" | "ARCHIVE", ids?: string[]) => {
+    const targetIds = ids ?? Array.from(selectedIds)
+    if (targetIds.length === 0) return
+    try {
+      setIsActionPending(true)
+      const res = await fetch(`/api/admin/crawlers/${crawlerId}/moderation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ itemIds: targetIds, action }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => null)
+        throw new Error(j?.error || `Failed (${res.status})`)
+      }
+      toast({
+        title: action === "APPROVE" ? "Approved" : action === "REJECT" ? "Rejected" : "Archived",
+        description: `${targetIds.length} item(s) updated`,
+      })
+      setSelectedIds(new Set())
+      await loadItems()
+      onActionComplete?.()
+    } catch (error: any) {
+      toast({ title: "Bulk action failed", description: error?.message, variant: "destructive" })
+    } finally {
+      setIsActionPending(false)
+    }
+  }
+
+  const statusBadgeVariant = (status: ModerationStatus) => {
+    switch (status) {
+      case "APPROVED":
+        return "default" as const
+      case "REJECTED":
+        return "destructive" as const
+      case "ARCHIVED":
+        return "secondary" as const
+      default:
+        return "outline" as const
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-3">
+          <Select value={statusFilter} onValueChange={(value: ModerationStatus) => setStatusFilter(value)}>
+            <SelectTrigger className="w-48">
+              <SelectValue>
+                {statusFilter === "PENDING" ? "Pending" : statusFilter === "APPROVED" ? "Approved" : statusFilter === "REJECTED" ? "Rejected" : "Archived"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {moderationStatuses.map((status) => (
+                <SelectItem key={status} value={status}>
+                  {status === "PENDING" ? "Pending" : status === "APPROVED" ? "Approved" : status === "REJECTED" ? "Rejected" : "Archived"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="ghost" size="icon" onClick={loadItems} disabled={loading} title="Refresh">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+          </Button>
+          <div className="text-sm text-muted-foreground">{items.length} item(s)</div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Checkbox
+            checked={selectedIds.size > 0 && selectedIds.size === items.length}
+            onCheckedChange={toggleSelectAll}
+            aria-label="Toggle select all"
+            disabled={items.length === 0}
+          />
+          <Button size="sm" variant="outline" onClick={toggleSelectAll} disabled={items.length === 0}>
+            {selectedIds.size === items.length ? "Clear Selection" : "Select All"}
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => runAction("APPROVE")}
+            disabled={selectedIds.size === 0 || isActionPending}
+            className="gap-2"
+          >
+            {isActionPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Approve
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => runAction("REJECT")}
+            disabled={selectedIds.size === 0 || isActionPending}
+            className="gap-2"
+          >
+            {isActionPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+            Reject
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => runAction("ARCHIVE")}
+            disabled={selectedIds.size === 0 || isActionPending}
+            className="gap-2"
+          >
+            {isActionPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Archive className="h-4 w-4" />}
+            Archive
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3">
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading moderation queue…
+          </div>
+        ) : items.length === 0 ? (
+          <div className="text-sm text-muted-foreground">
+            {statusFilter === "PENDING"
+              ? "No pending items right now. Run the crawler to ingest new content."
+              : "No items in this state."}
+          </div>
+        ) : (
+          items.map((item) => {
+            const selected = selectedIds.has(item.id)
+            return (
+              <div key={item.id} className={cn("rounded-lg border bg-card p-4 shadow-sm transition", selected && "ring-2 ring-primary/40")}
+              >
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="flex flex-1 flex-col gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Checkbox
+                        checked={selected}
+                        onCheckedChange={() => toggleSelect(item.id)}
+                        aria-label="Select moderation item"
+                      />
+                      <h3 className="text-base font-semibold leading-tight">
+                        {item.title || "Untitled"}
+                      </h3>
+                      <Badge variant={statusBadgeVariant(item.status)}>{item.status}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        Score {(item.score * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground line-clamp-3">
+                      {item.summary || item.content?.slice(0, 280) || "No summary"}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        <ExternalLink className="h-3 w-3" /> View source
+                      </a>
+                      <span>Source: {item.source}</span>
+                      {item.author && <span>Author: {item.author}</span>}
+                      <span>
+                        Discovered {formatDistanceToNow(new Date(item.discoveredAt), { addSuffix: true })}
+                      </span>
+                      {item.decidedAt && (
+                        <span>
+                          {item.status === "APPROVED"
+                            ? "Approved"
+                            : item.status === "REJECTED"
+                              ? "Rejected"
+                              : "Archived"}
+                          {item.decidedBy ? ` by ${item.decidedBy}` : ""} {formatDistanceToNow(new Date(item.decidedAt), { addSuffix: true })}
+                        </span>
+                      )}
+                    </div>
+                    {item.rejectionReason && (
+                      <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+                        Rejection reason: {item.rejectionReason}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                    onClick={() => runAction("APPROVE", [item.id])}
+                      disabled={isActionPending}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                    onClick={() => runAction("REJECT", [item.id])}
+                      disabled={isActionPending}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                    onClick={() => runAction("ARCHIVE", [item.id])}
+                      disabled={isActionPending}
+                    >
+                      Archive
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PortalSettingsSection({ crawlerId }: { crawlerId: string }) {
+  const [loading, setLoading] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
+  const [data, setData] = React.useState<PortalSettings | null>(null)
+  const [subdomain, setSubdomain] = React.useState("")
+  const [title, setTitle] = React.useState("")
+  const [description, setDescription] = React.useState("")
+  const [themeJson, setThemeJson] = React.useState("")
+  const { toast } = useToast()
+
+  const load = React.useCallback(async () => {
+    if (!crawlerId) return
+    try {
+      setLoading(true)
+      const res = await fetch(`/api/admin/crawlers/${crawlerId}/portal`, { credentials: "include" })
+      if (res.status === 404) {
+        setData(null)
+        setSubdomain("")
+        setTitle("")
+        setDescription("")
+        setThemeJson(JSON.stringify({ layout: "masonry", accentColor: "#2563eb" }, null, 2))
+        return
+      }
+      if (!res.ok) throw new Error(`Failed to load (${res.status})`)
+      const json = (await res.json()) as PortalSettings
+      setData(json)
+      setSubdomain(json.subdomain ?? "")
+      setTitle(json.title ?? "")
+      setDescription(json.description ?? "")
+      setThemeJson(JSON.stringify(json.theme ?? {}, null, 2) || "{}")
+    } catch (error: any) {
+      toast({ title: "Failed to load portal settings", description: error?.message, variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }, [crawlerId, toast])
+
+  React.useEffect(() => {
+    load()
+  }, [load])
+
+  async function save() {
+    try {
+      setSaving(true)
+      const body: Record<string, unknown> = {
+        subdomain: subdomain || undefined,
+        title: title || undefined,
+        description: description || undefined,
+      }
+      if (themeJson.trim()) {
+        try {
+          body.theme = JSON.parse(themeJson)
+        } catch (error) {
+          toast({ title: "Invalid theme JSON", description: "Please provide valid JSON", variant: "destructive" })
+          return
+        }
+      }
+
+      const res = await fetch(`/api/admin/crawlers/${crawlerId}/portal`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => null)
+        throw new Error(j?.error || `Failed (${res.status})`)
+      }
+      toast({ title: "Portal settings saved" })
+      await load()
+    } catch (error: any) {
+      toast({ title: "Failed to save", description: error?.message, variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Portal Subdomain</label>
+        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+          <Input
+            placeholder="e.g. design-inspiration"
+            value={subdomain}
+            onChange={(e) => setSubdomain(e.target.value.toLowerCase())}
+            className="max-w-md"
+          />
+          {subdomain && (
+            <div className="text-sm text-muted-foreground">{subdomain}.yourdomain.com</div>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Portal Title</label>
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} className="max-w-xl" maxLength={200} />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Portal Description</label>
+        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} maxLength={1000} />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Theme JSON</label>
+        <Textarea
+          value={themeJson}
+          onChange={(e) => setThemeJson(e.target.value)}
+          rows={6}
+          className="font-mono text-xs"
+        />
+        <div className="text-xs text-muted-foreground">
+          Configure colors, layout, etc. Must be valid JSON. Example:
+          <pre className="mt-2 rounded-lg bg-muted p-3 text-[11px]">
+{`{
+  "layout": "masonry",
+  "accentColor": "#2563eb"
+}`}
+          </pre>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save Portal Settings"}
+        </Button>
+        <Button type="button" variant="outline" onClick={load} disabled={loading} className="gap-2">
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+          Reload
+        </Button>
+        {data?.updatedAt && (
+          <div className="text-xs text-muted-foreground">
+            Last updated {formatDistanceToNow(new Date(data.updatedAt), { addSuffix: true })}
+          </div>
+        )}
+      </div>
+
+      {subdomain && (
+        <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+          Once DNS is configured, portal will be available at <span className="font-medium">https://{subdomain}.yourdomain.com</span>.
+          Hook deployment to provision the domain and point to the generated static build.
+        </div>
+      )}
     </div>
   )
 }

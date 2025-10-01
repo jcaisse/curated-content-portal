@@ -45,6 +45,7 @@ Enable administrators to configure web crawlers that collect content from curate
 
 1. **Schema & API Foundations**
    - Data model updates, migrations, repository services.
+   - Shared utilities to reduce duplicate controller logic.
 
 2. **Admin UX Enhancements**
    - Crawler CRUD wizard, keyword tools, moderation tabs.

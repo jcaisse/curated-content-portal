@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  app:
+    image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-https://portal.spoot.com}
+      DOMAIN: ${DOMAIN:-spoot.com}
+      PORT: ${PORT:-3000}
+    ports:
+      - "80:3000"
+    depends_on:
+      - db
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: app
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:
+
+

@@ -24,11 +24,7 @@ export default function PostsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("REVIEW");
 
-  useEffect(() => {
-    fetchPosts();
-  }, [statusFilter]); // TODO: Add fetchPosts to dependency array or use useCallback
-
-  const fetchPosts = async () => {
+  const fetchPosts = React.useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/admin/curate?status=${statusFilter}`);
@@ -41,7 +37,11 @@ export default function PostsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter]);
+
+  useEffect(() => {
+    fetchPosts();
+  }, [fetchPosts]);
 
   const handleCurateAction = async (postId: string, action: string) => {
     try {

@@ -1,179 +1,196 @@
 #!/usr/bin/env ts-node
 
-import { CheerioCrawler } from 'crawlee';
-import { db } from '../src/lib/db';
-import { generateUrlHash, normalizeUrl } from '../src/lib/url-utils';
-import { getEmbedding } from '../src/lib/ai';
-// Status types are now strings
+import 'dotenv/config'
+import rssParser from 'rss-parser'
+import { CheerioCrawler } from 'crawlee'
+import { db } from '../src/lib/db'
+import { generateUrlHash, normalizeUrl } from '../src/lib/url-utils'
+import { moderationRepository } from '../src/lib/prisma/moderation'
+import { scoreContentAgainstKeywords } from '../src/lib/services/scoring-service'
+import { extractKeywords } from '../src/lib/services/keyword-service'
+import { crawlSource, type SourceFetchResult } from '../src/lib/services/source-fetchers'
+
+interface CrawlRunContext {
+  crawlerId: string
+  runId: string
+  minMatchScore: number
+  keywords: string[]
+}
 
 interface CrawlOptions {
-  keyword: string;
-  limit: number;
+  crawlerId: string
+  limit?: number
+  dryRun?: boolean
 }
 
-async function crawlKeyword({ keyword, limit }: CrawlOptions) {
-  console.log(`🚀 Starting crawl for keyword: "${keyword}" (limit: ${limit})`);
-  
-  // Create or get keyword
-  const keywordRecord = await db.keyword.upsert({
-    where: { name: keyword },
-    update: {},
-    create: {
-      name: keyword,
-      description: `Auto-generated keyword for crawling`,
-      isActive: true,
-      createdBy: (await db.user.findFirst({ where: { role: 'ADMIN' } }))?.id || 'system'
-    }
-  });
+async function createRunContext(crawlerId: string): Promise<CrawlRunContext> {
+  const crawler = await db.crawler.findUnique({
+    where: { id: crawlerId },
+    include: {
+      keywords: true,
+    },
+  })
 
-  // Create crawl run
-  const crawlRun = await db.crawlRun.create({
+  if (!crawler) {
+    throw new Error(`Crawler ${crawlerId} not found`)
+  }
+
+  const run = await db.crawlRun.create({
     data: {
-      keywordId: keywordRecord.id,
+      crawlerId,
       status: 'PENDING',
-      startedAt: new Date()
-    }
-  });
+      startedAt: new Date(),
+    },
+  })
+
+  return {
+    crawlerId,
+    runId: run.id,
+    minMatchScore: crawler.minMatchScore ?? 0.75,
+    keywords: crawler.keywords.map((k) => k.term),
+  }
+}
+
+async function finalizeRun(runId: string, updates: Partial<{ status: string; error: string | null; itemsFound: number; itemsProcessed: number }>) {
+  await db.crawlRun.update({
+    where: { id: runId },
+    data: {
+      ...updates,
+      status: updates.status ?? 'COMPLETED',
+      completedAt: new Date(),
+    },
+  })
+}
+
+async function processSourceResult(context: CrawlRunContext, result: SourceFetchResult, dryRun = false) {
+  const normalizedUrl = normalizeUrl(result.url)
+  const urlHash = generateUrlHash(normalizedUrl)
+
+  const existingModeration = await db.crawlerModerationItem.findUnique({
+    where: {
+      crawlerId_urlHash: {
+        crawlerId: context.crawlerId,
+        urlHash,
+      },
+    },
+  })
+
+  if (existingModeration) {
+    return { skip: true, reason: 'duplicate' as const }
+  }
+
+  const score = await scoreContentAgainstKeywords({
+    title: result.title ?? '',
+    summary: result.summary ?? '',
+    content: result.content ?? '',
+    keywords: context.keywords,
+  })
+
+  if (score < context.minMatchScore) {
+    return { skip: true, reason: 'below_threshold' as const, score }
+  }
+
+  const extractedKeywords = await extractKeywords({
+    text: `${result.title ?? ''}
+${result.summary ?? ''}
+${result.content ?? ''}`,
+    existingKeywords: context.keywords,
+  })
+
+  if (!dryRun) {
+    await moderationRepository.queuePost({
+      crawlerId: context.crawlerId,
+      runId: context.runId,
+      url: normalizedUrl,
+      urlHash,
+      title: result.title ?? 'Untitled',
+      summary: result.summary ?? null,
+      content: result.content ?? null,
+      imageUrl: result.imageUrl ?? null,
+      author: result.author ?? null,
+      source: result.source ?? new URL(normalizedUrl).hostname,
+      language: result.language ?? null,
+      score,
+      metadata: {
+        keywords: extractedKeywords,
+        raw: {
+          publishedAt: result.publishedAt ?? null,
+        },
+      },
+    })
+  }
+
+  return { skip: false, score }
+}
+
+async function crawlCrawler(options: CrawlOptions) {
+  const limit = options.limit ?? Number(process.env.CRAWLER_MAX_REQUESTS ?? 100)
+  const context = await createRunContext(options.crawlerId)
+
+  console.log(`🚀 Crawl run ${context.runId} for crawler ${context.crawlerId}`)
+  await db.crawlRun.update({ where: { id: context.runId }, data: { status: 'RUNNING' } })
 
   try {
-    // Update status to running
-    await db.crawlRun.update({
-      where: { id: crawlRun.id },
-      data: { status: 'RUNNING' }
-    });
+    const sources = await db.crawlerSource.findMany({
+      where: { crawlerId: context.crawlerId, enabled: true },
+      orderBy: { createdAt: 'asc' },
+    })
 
-    let itemsFound = 0;
-    let itemsProcessed = 0;
+    let itemsFound = 0
+    let itemsQueued = 0
 
-    // Configure crawler
-    const crawler = new CheerioCrawler({
-      maxRequestsPerCrawl: limit,
-      requestHandler: async ({ request, $, response }) => {
-        try {
-          itemsFound++;
-          
-          const url = request.url;
-          const title = $('title').text().trim() || $('h1').first().text().trim();
-          const description = $('meta[name="description"]').attr('content') || 
-                             $('p').first().text().trim().substring(0, 200);
-          
-          // Extract image
-          let imageUrl = $('meta[property="og:image"]').attr('content') ||
-                        $('meta[name="twitter:image"]').attr('content') ||
-                        $('img').first().attr('src');
-          
-          if (imageUrl && !imageUrl.startsWith('http')) {
-            imageUrl = new URL(imageUrl, url).href;
-          }
+    for (const source of sources) {
+      console.log(`📰 Fetching source ${source.type} :: ${source.url}`)
+      const fetched = await crawlSource({ source, limit })
 
-          // Generate URL hash for deduplication
-          const urlHash = generateUrlHash(url);
+      for (const item of fetched.items) {
+        itemsFound += 1
+        if (itemsFound > limit) break
 
-          // Check if post already exists
-          const existingPost = await db.post.findUnique({
-            where: { urlHash }
-          });
-
-          if (existingPost) {
-            console.log(`⚠️  Duplicate found: ${url}`);
-            return;
-          }
-
-          // Get content text (first few paragraphs)
-          const content = $('p').slice(0, 3).map((_, el) => $(el).text()).get().join(' ').trim();
-
-          // Create post
-          const post = await db.post.create({
-            data: {
-              title,
-              description: description?.substring(0, 500),
-              content: content.substring(0, 2000),
-              url,
-              imageUrl,
-              source: new URL(url).hostname,
-              status: 'DRAFT',
-              urlHash,
-              keywordId: keywordRecord.id,
-              runId: crawlRun.id
-            }
-          });
-
-          // Note: Embedding generation would be added here for vector similarity
-          // For now, we'll skip this to keep the setup simple
-
-          itemsProcessed++;
-          console.log(`✅ Processed: ${title} (${url})`);
-
-          // Update crawl run progress
-          await db.crawlRun.update({
-            where: { id: crawlRun.id },
-            data: { 
-              itemsFound,
-              itemsProcessed 
-            }
-          });
-
-        } catch (error) {
-          console.error(`❌ Error processing ${request.url}:`, error);
+        const outcome = await processSourceResult(context, item, options.dryRun)
+        if (!outcome.skip) {
+          itemsQueued += 1
+          console.log(`✅ queued (${(outcome.score ?? 0).toFixed(2)}) ${item.url}`)
+        } else {
+          console.log(`↷ skipped ${item.url} (${outcome.reason}${outcome.score ? ` ${outcome.score.toFixed(2)}` : ''})`)
         }
-      },
-    });
-
-    // TODO: Implement real content sources integration
-    // This is a placeholder - replace with actual RSS feeds and web sources
-    const searchUrls = [
-      // TODO: Replace with real RSS feeds and content sources
-      `https://example.com/search?q=${encodeURIComponent(keyword)}`,
-    ];
-
-    await crawler.run(searchUrls);
-
-    // Update crawl run status
-    await db.crawlRun.update({
-      where: { id: crawlRun.id },
-      data: {
-        status: 'COMPLETED',
-        completedAt: new Date(),
-        itemsFound,
-        itemsProcessed
       }
-    });
+    }
 
-    console.log(`🎉 Crawl completed! Found ${itemsFound} items, processed ${itemsProcessed}`);
+    await finalizeRun(context.runId, {
+      itemsFound,
+      itemsProcessed: itemsQueued,
+    })
 
-  } catch (error) {
-    console.error('❌ Crawl failed:', error);
-    
-    await db.crawlRun.update({
-      where: { id: crawlRun.id },
-      data: {
-        status: 'FAILED',
-        error: error instanceof Error ? error.message : 'Unknown error',
-        completedAt: new Date()
-      }
-    });
+    console.log(`🎉 Crawl complete. queued=${itemsQueued}/${itemsFound}`)
+  } catch (error: any) {
+    console.error('❌ crawl failed', error)
+    await finalizeRun(context.runId, {
+      status: 'FAILED',
+      error: error?.message ?? 'Unknown error',
+    })
+    throw error
   }
 }
 
-// CLI interface
 async function main() {
-  const args = process.argv.slice(2);
-  const keywordArg = args.find(arg => arg.startsWith('--keyword='))?.split('=')[1];
-  const limitArg = args.find(arg => arg.startsWith('--limit='))?.split('=')[1];
-  
-  if (!keywordArg) {
-    console.error('❌ Keyword is required. Usage: npm run crawl -- --keyword="artificial intelligence" --limit=10');
-    process.exit(1);
+  const args = process.argv.slice(2)
+  const crawlerId = args.find((arg) => arg.startsWith('--crawler='))?.split('=')[1]
+  const limit = args.find((arg) => arg.startsWith('--limit='))?.split('=')[1]
+  const dryRun = args.includes('--dry-run')
+
+  if (!crawlerId) {
+    console.error('❌ Crawler ID is required. Usage: npm run crawl -- --crawler="<crawlerId>" --limit=50 --dry-run')
+    process.exit(1)
   }
 
-  const keyword = keywordArg.replace(/"/g, '');
-  const limit = limitArg ? parseInt(limitArg) : 50;
-
-  await crawlKeyword({ keyword, limit });
-  
-  await db.$disconnect();
+  await crawlCrawler({ crawlerId, limit: limit ? parseInt(limit, 10) : undefined, dryRun })
+  await db.$disconnect()
 }
 
 if (require.main === module) {
-  main().catch(console.error);
+  main().catch((error) => {
+    console.error(error)
+    process.exit(1)
+  })
 }

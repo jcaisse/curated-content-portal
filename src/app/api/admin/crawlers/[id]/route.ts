@@ -1,38 +1,29 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { z } from "zod";
-
-const updateCrawlerSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
-  description: z.string().max(1000).optional(),
-  isActive: z.boolean().optional(),
-  minMatchScore: z.number().min(0).max(1).optional(),
-});
+import { NextRequest, NextResponse } from "next/server"
+import { db } from "@/lib/db"
+import { crawlerIdParam, updateCrawlerSchema } from "@/lib/api/validators"
+import { requireAdmin } from "@/lib/api/guards"
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth();
-    if (!session?.user || session.user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdmin()
+    if (!guard.authorized) return guard.response
 
-    const { id } = await params;
+    const { id } = crawlerIdParam.parse(await params)
     const crawler = await db.crawler.findUnique({
       where: { id },
       include: {
         keywords: true,
         _count: { select: { keywords: true, runs: true } },
       },
-    });
-    if (!crawler) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json(crawler);
+    })
+    if (!crawler) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    return NextResponse.json(crawler)
   } catch (error) {
-    console.error("Error fetching crawler:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Error fetching crawler:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
@@ -41,41 +32,40 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth();
-    if (!session?.user || session.user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const guard = await requireAdmin()
+    if (!guard.authorized) return guard.response
 
-    const { id } = await params;
-    const body = await request.json();
-    const parsed = updateCrawlerSchema.safeParse(body);
+    const { id } = crawlerIdParam.parse(await params)
+    const body = await request.json()
+    const parsed = updateCrawlerSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      );
+        { status: 400 },
+      )
     }
 
-    const exists = await db.crawler.findUnique({ where: { id } });
-    if (!exists) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const exists = await db.crawler.findUnique({ where: { id } })
+    if (!exists) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     const updated = await db.crawler.update({
       where: { id },
       data: parsed.data,
       include: {
+        portal: true,
         _count: { select: { keywords: true, runs: true } },
       },
-    });
-    return NextResponse.json(updated);
+    })
+    return NextResponse.json(updated)
   } catch (error) {
-    console.error("Error updating crawler:", error);
+    console.error("Error updating crawler:", error)
     if (error instanceof Error && error.message.includes("Unique constraint")) {
       return NextResponse.json(
         { error: "Crawler with this name already exists" },
-        { status: 409 }
-      );
+        { status: 409 },
+      )
     }
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
@@ -84,29 +74,28 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth();
-    if (!session?.user || session.user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const { id } = await params;
+    const guard = await requireAdmin()
+    if (!guard.authorized) return guard.response
+
+    const { id } = crawlerIdParam.parse(await params)
 
     const existing = await db.crawler.findUnique({
       where: { id },
       include: { _count: { select: { keywords: true, runs: true } } },
-    });
-    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    })
+    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
     if (existing._count.runs > 0) {
       return NextResponse.json(
         { error: "Cannot delete crawler with runs. Consider disabling instead." },
-        { status: 409 }
-      );
+        { status: 409 },
+      )
     }
 
-    await db.crawler.delete({ where: { id } });
-    return NextResponse.json({ message: "Deleted" });
+    await db.crawler.delete({ where: { id } })
+    return NextResponse.json({ message: "Deleted" })
   } catch (error) {
-    console.error("Error deleting crawler:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Error deleting crawler:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
