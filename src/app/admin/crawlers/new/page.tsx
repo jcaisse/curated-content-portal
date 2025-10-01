@@ -24,6 +24,8 @@ export default function NewCrawlerPage() {
   const [debugLines, setDebugLines] = React.useState<string[]>([])
   const [extracted, setExtracted] = React.useState<Array<{ name: string; relevance: number; confidence: string }>>([])
   const [selected, setSelected] = React.useState<Set<string>>(new Set())
+  const [manualCsv, setManualCsv] = React.useState("")
+  const [confirmedKeywords, setConfirmedKeywords] = React.useState<Set<string>>(new Set())
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -41,10 +43,10 @@ export default function NewCrawlerPage() {
         throw new Error(j?.error || `Failed (${res.status})`)
       }
       const created = await res.json()
-      // If user already selected keywords, immediately add them to the new crawler
-      if (selected.size > 0) {
+      // If user confirmed keywords, immediately add them to the new crawler
+      if (confirmedKeywords.size > 0) {
         try {
-          const payload = Array.from(selected).map((term) => ({ term, source: 'ai' as const }))
+          const payload = Array.from(confirmedKeywords).map((term) => ({ term, source: 'manual' as const }))
           const addRes = await fetch(`/api/admin/crawlers/${created.id}/keywords`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -110,63 +112,131 @@ export default function NewCrawlerPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Keyword Tools (optional)</CardTitle>
+          <CardTitle>Keywords (optional - configure before or after creation)</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Paste up to 5000 chars for AI extraction</label>
-              <Textarea value={extractText} onChange={(e) => setExtractText(e.target.value)} maxLength={5000} rows={8} />
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="text-sm">Max Keywords</label>
-              <Input type="number" min={1} max={50} value={maxKeywords} onChange={(e) => setMaxKeywords(parseInt(e.target.value || '20', 10))} className="w-24" />
-              <Button onClick={handleExtract} disabled={!extractText.trim() || extracting}>{extracting ? 'Extracting…' : 'Extract'}</Button>
-              <Button variant="outline" onClick={() => { setExtracted([]); setSelected(new Set()) }}>Clear</Button>
-            </div>
-            {extracting && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground animate-spin"></div>
-                Extracting keywords…
-              </div>
-            )}
-            {debugLines.length > 0 && (
-              <div className="mt-2 rounded border bg-muted/20 p-2 text-xs font-mono max-h-36 overflow-y-auto">
-                {debugLines.map((ln, i) => (<div key={i}>{ln}</div>))}
-              </div>
-            )}
-            {extracted.length > 0 && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Left: Extraction & Manual Entry */}
+            <div className="space-y-4">
               <div>
-                <div className="mb-2 flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setSelected(new Set(extracted.map(k => k.name)))}>Select All</Button>
-                  <Button variant="outline" size="sm" onClick={() => setSelected(new Set())}>Clear Selection</Button>
+                <label className="mb-1 block text-sm font-medium">Paste up to 5000 chars for AI extraction</label>
+                <Textarea value={extractText} onChange={(e) => setExtractText(e.target.value)} maxLength={5000} rows={10} />
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-sm">Max Keywords</label>
+                <Input type="number" min={1} max={50} value={maxKeywords} onChange={(e) => setMaxKeywords(parseInt(e.target.value || '20', 10))} className="w-24" />
+                <Button onClick={handleExtract} disabled={!extractText.trim() || extracting}>{extracting ? 'Extracting…' : 'Extract'}</Button>
+                <Button variant="outline" onClick={() => { setExtracted([]); setSelected(new Set()) }}>Clear</Button>
+              </div>
+              
+              {extracting && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground animate-spin"></div>
+                  Extracting keywords…
                 </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {extracted.map((k) => {
-                    const isSel = selected.has(k.name)
-                    return (
-                      <div key={k.name} className={`flex items-center justify-between rounded-md border p-2 ${isSel ? 'bg-blue-50 border-blue-300' : ''}`}>
-                        <div className="min-w-0">
-                          <div className="truncate font-medium">{k.name}</div>
-                          <div className="text-xs text-muted-foreground">relevance {(k.relevance * 100).toFixed(0)}% · {k.confidence}</div>
+              )}
+
+              {debugLines.length > 0 && (
+                <div className="mt-2 rounded border bg-muted/20 p-2 text-xs font-mono max-h-36 overflow-y-auto">
+                  {debugLines.map((ln, i) => (<div key={i}>{ln}</div>))}
+                </div>
+              )}
+
+              {extracted.length > 0 && (
+                <div>
+                  <div className="mb-2 flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setSelected(new Set(extracted.map(k => k.name)))}>Select All</Button>
+                    <Button variant="outline" size="sm" onClick={() => setSelected(new Set())}>Clear Selection</Button>
+                    <Button size="sm" onClick={addSelectedToConfirmed} disabled={selected.size === 0}>{`Add (${selected.size})`}</Button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {extracted.map((k) => {
+                      const isSel = selected.has(k.name)
+                      return (
+                        <div key={k.name} className={`flex items-center justify-between rounded-md border p-2 ${isSel ? 'bg-blue-50 border-blue-300' : ''}`}>
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{k.name}</div>
+                            <div className="text-xs text-muted-foreground">relevance {(k.relevance * 100).toFixed(0)}% · {k.confidence}</div>
+                          </div>
+                          <Button variant="outline" size="sm" onClick={() => toggleSelect(k.name)}>{isSel ? 'Deselect' : 'Select'}</Button>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => toggleSelect(k.name)}>{isSel ? 'Deselect' : 'Select'}</Button>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="mb-1 block text-sm font-medium">Add manual keywords (comma separated)</label>
+                <Textarea rows={3} value={manualCsv} onChange={(e) => setManualCsv(e.target.value)} placeholder="keyword1, keyword2, keyword3" />
+                <div>
+                  <Button variant="outline" size="sm" onClick={addManual} disabled={!manualCsv.trim()}>Add Manual</Button>
                 </div>
               </div>
-            )}
+            </div>
+
+            {/* Right: Confirmed Keywords */}
+            <div className="space-y-3">
+              <div className="font-medium">Keywords to be saved with crawler ({confirmedKeywords.size})</div>
+              <div className="text-xs text-muted-foreground">
+                These keywords will be added to the crawler when you click "Create" above.
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {Array.from(confirmedKeywords).map((term) => (
+                  <div key={term} className="flex items-center justify-between rounded-md border p-2 bg-green-50 border-green-300">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{term}</div>
+                    </div>
+                    <Button variant="destructive" size="sm" onClick={() => removeConfirmedKeyword(term)}>Remove</Button>
+                  </div>
+                ))}
+                {confirmedKeywords.size === 0 && (
+                  <div className="text-sm text-muted-foreground col-span-2">
+                    No keywords added yet. Use AI extraction or manual entry to add keywords.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
     </div>
   )
+
   function toggleSelect(name: string) {
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(name)) next.delete(name)
       else next.add(name)
+      return next
+    })
+  }
+
+  function addSelectedToConfirmed() {
+    setConfirmedKeywords((prev) => {
+      const next = new Set(prev)
+      selected.forEach((term) => next.add(term))
+      return next
+    })
+    setSelected(new Set())
+  }
+
+  function addManual() {
+    if (!manualCsv.trim()) return
+    const terms = manualCsv.split(',').map((s) => s.trim()).filter(Boolean)
+    if (terms.length === 0) return
+    setConfirmedKeywords((prev) => {
+      const next = new Set(prev)
+      terms.forEach((term) => next.add(term))
+      return next
+    })
+    setManualCsv('')
+  }
+
+  function removeConfirmedKeyword(term: string) {
+    setConfirmedKeywords((prev) => {
+      const next = new Set(prev)
+      next.delete(term)
       return next
     })
   }
