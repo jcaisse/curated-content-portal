@@ -33,7 +33,7 @@ export async function createRunContext(crawlerId: string): Promise<CrawlRunConte
   return {
     crawlerId,
     runId: run.id,
-    minMatchScore: crawler.minMatchScore ?? 0.75,
+    minMatchScore: crawler.minMatchScore ?? 0.3, // Lowered from 0.75 to 0.3 for better matching
     keywords: crawler.keywords.map((k) => k.term),
   }
 }
@@ -62,6 +62,7 @@ export async function processSourceResult(context: CrawlRunContext, result: Sour
     },
   })
   if (existingModeration) {
+    console.log(`⏭️  Skipping duplicate: ${result.url}`)
     return { skip: true, reason: "duplicate" as const }
   }
 
@@ -71,9 +72,15 @@ export async function processSourceResult(context: CrawlRunContext, result: Sour
     content: result.content ?? "",
     keywords: context.keywords,
   })
+  
+  console.log(`📊 Scored "${result.title?.substring(0, 60)}...": ${(score * 100).toFixed(1)}% (threshold: ${(context.minMatchScore * 100).toFixed(0)}%)`)
+  
   if (score < context.minMatchScore) {
+    console.log(`   ❌ Below threshold, skipping`)
     return { skip: true, reason: "below_threshold" as const, score }
   }
+  
+  console.log(`   ✅ Above threshold, queuing for moderation`)
 
   const extractedKeywords = await extractKeywords({
     text: `${result.title ?? ""}\n${result.summary ?? ""}\n${result.content ?? ""}`,
@@ -110,6 +117,11 @@ export async function runCrawler(options: CrawlOptions) {
   const limit = options.limit ?? Number(process.env.CRAWLER_MAX_REQUESTS ?? 100)
   const context = await createRunContext(options.crawlerId)
 
+  console.log(`\n🚀 Starting crawler run: ${context.runId}`)
+  console.log(`   Keywords: [${context.keywords.join(', ')}]`)
+  console.log(`   Min Match Score: ${(context.minMatchScore * 100).toFixed(0)}%`)
+  console.log(`   Max Items: ${limit}\n`)
+
   await db.crawlRun.update({ where: { id: context.runId }, data: { status: "RUNNING" } })
 
   try {
@@ -118,11 +130,15 @@ export async function runCrawler(options: CrawlOptions) {
       orderBy: { createdAt: "asc" },
     })
 
+    console.log(`📡 Found ${sources.length} enabled source(s)`)
+
     let itemsFound = 0
     let itemsQueued = 0
 
     for (const source of sources) {
       try {
+        console.log(`\n🔍 Crawling source: ${source.url} (${source.type})`)
+        
         const webOptions = source.type === 'web' ? {
           maxPages: source.maxPages ?? 10,
           maxDepth: source.maxDepth ?? 2,
@@ -130,6 +146,8 @@ export async function runCrawler(options: CrawlOptions) {
         } : undefined
         
         const fetched = await crawlSource({ source, limit, webOptions })
+        console.log(`   Found ${fetched.items.length} item(s) from source`)
+        
         for (const item of fetched.items) {
           itemsFound += 1
           if (itemsFound > limit) break
@@ -140,7 +158,7 @@ export async function runCrawler(options: CrawlOptions) {
         }
       } catch (error: any) {
         // Log error but continue with other sources
-        console.error(`Failed to crawl source ${source.url}:`, error.message)
+        console.error(`❌ Failed to crawl source ${source.url}:`, error.message)
         // Update source status to show error
         await db.crawlerSource.update({
           where: { id: source.id },
@@ -148,6 +166,8 @@ export async function runCrawler(options: CrawlOptions) {
         }).catch(() => {}) // Ignore if update fails
       }
     }
+    
+    console.log(`\n✅ Crawl complete: Found ${itemsFound}, Queued ${itemsQueued}\n`)
 
     await finalizeRun(context.runId, {
       itemsFound,

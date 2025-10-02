@@ -1098,7 +1098,18 @@ function CrawlerRunnerCard({ id }: { id: string }) {
   const [running, setRunning] = React.useState(false)
   const [runs, setRuns] = React.useState<any[]>([])
   const [polling, setPolling] = React.useState(false)
-  const [dismissedRuns, setDismissedRuns] = React.useState<Set<string>>(new Set())
+  const [dismissedRuns, setDismissedRuns] = React.useState<Set<string>>(() => {
+    // Load dismissed runs from localStorage on mount
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(`dismissed-runs-${id}`)
+        return stored ? new Set(JSON.parse(stored)) : new Set()
+      } catch {
+        return new Set()
+      }
+    }
+    return new Set()
+  })
   const { toast } = useToast()
 
   const loadRuns = React.useCallback(async () => {
@@ -1173,7 +1184,14 @@ function CrawlerRunnerCard({ id }: { id: string }) {
   const isActive = latestRun?.status === 'RUNNING' || latestRun?.status === 'PENDING'
 
   const dismissRun = (runId: string) => {
-    setDismissedRuns((prev) => new Set(prev).add(runId))
+    setDismissedRuns((prev) => {
+      const updated = new Set(prev).add(runId)
+      // Persist to localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`dismissed-runs-${id}`, JSON.stringify(Array.from(updated)))
+      }
+      return updated
+    })
   }
 
   const visibleRuns = runs.filter((run) => !dismissedRuns.has(run.id))
