@@ -129,31 +129,37 @@ model CrawlRun {
 }
 
 model Post {
-  id          String                       @id @default(cuid())
-  title       String
-  description String?
-  content     String?
-  url         String                       @unique
-  imageUrl    String?
-  source      String
-  publishedAt DateTime?
-  status      PostStatus                   @default(DRAFT)
-  tags        String[] // Array of tags
-  embedding   Unsupported("vector(1536)")? // pgvector for similarity search
-  urlHash     String                       @unique
-  createdAt   DateTime                     @default(now())
-  updatedAt   DateTime                     @updatedAt
+  id                String                       @id @default(cuid())
+  title             String
+  description       String?
+  summary           String? // Short summary/excerpt
+  content           String?
+  url               String                       @unique
+  imageUrl          String?
+  source            String
+  author            String? // Author name from crawled content
+  language          String?
+  publishedAt       DateTime?
+  status            PostStatus                   @default(DRAFT)
+  tags              String[] // Array of tags
+  embedding         Unsupported("vector(1536)")? // pgvector for similarity search
+  urlHash           String                       @unique
+  metadata          Json? // Additional metadata from crawler
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
 
-  keywordId String?
-  runId     String?
-  authorId  String?
-  crawlerId String?
+  keywordId         String?
+  runId             String?
+  authorId          String?
+  crawlerId         String?
+  moderationItemId  String? @unique // Link to moderation item
 
-  keyword   Keyword?      @relation(fields: [keywordId], references: [id])
-  run       CrawlRun?     @relation(fields: [runId], references: [id])
-  author    User?         @relation(fields: [authorId], references: [id])
-  crawler   Crawler?      @relation(fields: [crawlerId], references: [id])
-  related   RelatedPost[] @relation("PostRelated")
+  keyword          Keyword?                 @relation(fields: [keywordId], references: [id])
+  run              CrawlRun?                @relation(fields: [runId], references: [id])
+  authorUser       User?                    @relation(fields: [authorId], references: [id])
+  crawler          Crawler?                 @relation(fields: [crawlerId], references: [id])
+  moderationItem   CrawlerModerationItem?   @relation(fields: [moderationItemId], references: [id])
+  related          RelatedPost[]            @relation("PostRelated")
   relatedTo RelatedPost[] @relation("PostRelatedTo")
   // Vector index will be created via raw SQL migration
 
@@ -275,6 +281,7 @@ model CrawlerModerationItem {
 
   crawler Crawler   @relation(fields: [crawlerId], references: [id])
   run     CrawlRun? @relation(fields: [runId], references: [id])
+  post    Post?     // Created when approved
 
   @@unique([crawlerId, urlHash])
   @@index([crawlerId, status])
