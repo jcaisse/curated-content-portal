@@ -6,7 +6,7 @@ import { formatDistanceToNow } from "date-fns"
 
 interface PostWithRelations extends Post {
   keyword?: Keyword | null
-  author?: User | null
+  authorUser?: Pick<User, 'name' | 'email'> | null
 }
 
 interface RecentPostsProps {

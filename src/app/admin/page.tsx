@@ -23,7 +23,12 @@ export default async function AdminDashboard() {
       take: 10,
       include: {
         keyword: true,
-        author: true
+        authorUser: {
+          select: {
+            name: true,
+            email: true
+          }
+        }
       }
     }),
     db.crawlRun.findMany({
