@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ['@prisma/client'],
+  serverExternalPackages: ['@prisma/client', 'crawlee', '@crawlee/cheerio', '@crawlee/puppeteer', 'puppeteer', 'natural', 'rss-parser'],
   output: 'standalone',
   eslint: {
     ignoreDuringBuilds: true,
