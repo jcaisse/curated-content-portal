@@ -1098,6 +1098,7 @@ function CrawlerRunnerCard({ id }: { id: string }) {
   const [running, setRunning] = React.useState(false)
   const [runs, setRuns] = React.useState<any[]>([])
   const [polling, setPolling] = React.useState(false)
+  const [dismissedRuns, setDismissedRuns] = React.useState<Set<string>>(new Set())
   const { toast } = useToast()
 
   const loadRuns = React.useCallback(async () => {
@@ -1171,6 +1172,12 @@ function CrawlerRunnerCard({ id }: { id: string }) {
   const latestRun = runs[0]
   const isActive = latestRun?.status === 'RUNNING' || latestRun?.status === 'PENDING'
 
+  const dismissRun = (runId: string) => {
+    setDismissedRuns((prev) => new Set(prev).add(runId))
+  }
+
+  const visibleRuns = runs.filter((run) => !dismissedRuns.has(run.id))
+
   return (
     <Card className="border-2 border-primary/20">
       <CardHeader>
@@ -1208,13 +1215,13 @@ function CrawlerRunnerCard({ id }: { id: string }) {
         </div>
       </CardHeader>
       <CardContent>
-        {runs.length === 0 ? (
+        {visibleRuns.length === 0 ? (
           <div className="text-center py-6 text-sm text-muted-foreground">
-            No crawler runs yet. Click "Run Crawler" to start.
+            {runs.length === 0 ? 'No crawler runs yet. Click "Run Crawler" to start.' : 'All runs dismissed.'}
           </div>
         ) : (
           <div className="space-y-3">
-            {runs.slice(0, 5).map((run) => (
+            {visibleRuns.slice(0, 5).map((run) => (
               <div 
                 key={run.id} 
                 className={`rounded-lg border p-3 ${
@@ -1265,6 +1272,17 @@ function CrawlerRunnerCard({ id }: { id: string }) {
                         Error: {run.error}
                       </div>
                     )}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button
+                      onClick={() => dismissRun(run.id)}
+                      className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                      title="Dismiss"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>

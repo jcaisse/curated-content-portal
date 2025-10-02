@@ -18,16 +18,22 @@ export interface SourceFetchResult {
 const rss = new rssParser()
 
 export async function fetchRss(url: string, limit: number): Promise<SourceFetchResult[]> {
-  const feed = await rss.parseURL(url)
-  return (feed.items ?? []).slice(0, limit).map((item) => ({
-    url: item.link ?? '',
-    title: item.title ?? undefined,
-    summary: item.contentSnippet ?? item.summary ?? undefined,
-    content: item['content:encoded'] ?? item.content ?? undefined,
-    author: item.creator ?? item.author ?? undefined,
-    publishedAt: item.isoDate ?? undefined,
-    source: feed.title ?? undefined,
-  })).filter((item) => !!item.url)
+  try {
+    const feed = await rss.parseURL(url)
+    return (feed.items ?? []).slice(0, limit).map((item) => ({
+      url: item.link ?? '',
+      title: item.title ?? undefined,
+      summary: item.contentSnippet ?? item.summary ?? undefined,
+      content: item['content:encoded'] ?? item.content ?? undefined,
+      author: item.creator ?? item.author ?? undefined,
+      publishedAt: item.isoDate ?? undefined,
+      source: feed.title ?? undefined,
+    })).filter((item) => !!item.url)
+  } catch (error: any) {
+    // Log the error but return empty array instead of crashing
+    console.error(`Failed to parse RSS feed ${url}:`, error.message)
+    throw new Error(`RSS feed parsing failed: ${error.message}`)
+  }
 }
 
 export async function fetchWeb(

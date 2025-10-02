@@ -122,20 +122,30 @@ export async function runCrawler(options: CrawlOptions) {
     let itemsQueued = 0
 
     for (const source of sources) {
-      const webOptions = source.type === 'web' ? {
-        maxPages: source.maxPages ?? 10,
-        maxDepth: source.maxDepth ?? 2,
-        followLinks: source.followLinks ?? true,
-      } : undefined
-      
-      const fetched = await crawlSource({ source, limit, webOptions })
-      for (const item of fetched.items) {
-        itemsFound += 1
-        if (itemsFound > limit) break
-        const outcome = await processSourceResult(context, item, options.dryRun)
-        if (!outcome.skip) {
-          itemsQueued += 1
+      try {
+        const webOptions = source.type === 'web' ? {
+          maxPages: source.maxPages ?? 10,
+          maxDepth: source.maxDepth ?? 2,
+          followLinks: source.followLinks ?? true,
+        } : undefined
+        
+        const fetched = await crawlSource({ source, limit, webOptions })
+        for (const item of fetched.items) {
+          itemsFound += 1
+          if (itemsFound > limit) break
+          const outcome = await processSourceResult(context, item, options.dryRun)
+          if (!outcome.skip) {
+            itemsQueued += 1
+          }
         }
+      } catch (error: any) {
+        // Log error but continue with other sources
+        console.error(`Failed to crawl source ${source.url}:`, error.message)
+        // Update source status to show error
+        await db.crawlerSource.update({
+          where: { id: source.id },
+          data: { lastStatus: `Error: ${error.message}` }
+        }).catch(() => {}) // Ignore if update fails
       }
     }
 
