@@ -75,17 +75,19 @@ export default function NewCrawlerPage() {
         <h1 className="text-3xl font-bold">Create Crawler</h1>
         <Link href="/admin/crawlers"><Button variant="outline">Back</Button></Link>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <div className="mb-4 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-          <form className="space-y-4" onSubmit={onSubmit}>
+
+      {error && (
+        <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={onSubmit} className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Crawler Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium">Name</label>
               <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={100} />
@@ -103,12 +105,8 @@ export default function NewCrawlerPage() {
               <Input type="number" step="0.01" min={0} max={1} value={minMatchScore}
                 onChange={(e) => setMinMatchScore(parseFloat(e.target.value))} />
             </div>
-            <div className="pt-2">
-              <Button type="submit" disabled={submitting}>{submitting ? "Creating..." : "Create"}</Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
       <Card>
         <CardHeader>
@@ -200,6 +198,38 @@ export default function NewCrawlerPage() {
           </div>
         </CardContent>
       </Card>
+
+        {/* Save Button - Prominent at bottom */}
+        <Card className="bg-muted/30">
+          <CardContent className="pt-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <div className="font-medium text-lg">Ready to create your crawler?</div>
+                <div className="text-sm text-muted-foreground">
+                  {confirmedKeywords.size > 0 
+                    ? `This crawler will be created with ${confirmedKeywords.size} keyword${confirmedKeywords.size === 1 ? '' : 's'}.`
+                    : "You can add keywords now or after creating the crawler."}
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Link href="/admin/crawlers">
+                  <Button type="button" variant="outline">Cancel</Button>
+                </Link>
+                <Button type="submit" disabled={submitting} size="lg" className="min-w-[160px]">
+                  {submitting ? (
+                    <>
+                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                      Creating...
+                    </>
+                  ) : (
+                    `Create Crawler${confirmedKeywords.size > 0 ? ` (${confirmedKeywords.size} keywords)` : ''}`
+                  )}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </form>
     </div>
   )
 
