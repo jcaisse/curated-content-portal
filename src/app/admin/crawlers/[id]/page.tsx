@@ -500,6 +500,8 @@ export default function EditCrawlerPage() {
         <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>
       )}
 
+      <CrawlerRunnerCard id={id} />
+
       <Card>
         <CardHeader>
           <CardTitle>Details</CardTitle>
@@ -1089,6 +1091,188 @@ function PortalSettingsSection({ crawlerId }: { crawlerId: string }) {
         </div>
       )}
     </div>
+  )
+}
+
+function CrawlerRunnerCard({ id }: { id: string }) {
+  const [running, setRunning] = React.useState(false)
+  const [runs, setRuns] = React.useState<any[]>([])
+  const [polling, setPolling] = React.useState(false)
+  const { toast } = useToast()
+
+  const loadRuns = React.useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/crawlers/${id}/runs`, {
+        credentials: 'include',
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setRuns(data)
+        
+        // Check if any run is in progress
+        const hasRunning = data.some((r: any) => r.status === 'RUNNING' || r.status === 'PENDING')
+        if (hasRunning && !polling) {
+          setPolling(true)
+        } else if (!hasRunning && polling) {
+          setPolling(false)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load runs:', error)
+    }
+  }, [id, polling])
+
+  React.useEffect(() => {
+    loadRuns()
+  }, [loadRuns])
+
+  // Poll for updates when a run is active
+  React.useEffect(() => {
+    if (!polling) return
+    
+    const interval = setInterval(() => {
+      loadRuns()
+    }, 2000) // Poll every 2 seconds
+
+    return () => clearInterval(interval)
+  }, [polling, loadRuns])
+
+  const runCrawler = async () => {
+    try {
+      setRunning(true)
+      const res = await fetch(`/api/admin/crawlers/${id}/run`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      
+      if (!res.ok) {
+        const error = await res.json().catch(() => null)
+        throw new Error(error?.error || 'Failed to start crawler')
+      }
+      
+      toast({
+        title: 'Crawler Started',
+        description: 'The crawler is now running. Status will update below.',
+      })
+      
+      setPolling(true)
+      setTimeout(() => loadRuns(), 1000)
+    } catch (error: any) {
+      toast({
+        title: 'Failed to Start Crawler',
+        description: error?.message || 'An error occurred',
+        variant: 'destructive',
+      })
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const latestRun = runs[0]
+  const isActive = latestRun?.status === 'RUNNING' || latestRun?.status === 'PENDING'
+
+  return (
+    <Card className="border-2 border-primary/20">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            Crawler Runner
+            {isActive && (
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+                <span className="text-sm font-normal text-muted-foreground">Running...</span>
+              </div>
+            )}
+          </CardTitle>
+          <Button 
+            onClick={runCrawler} 
+            disabled={running || isActive}
+            size="lg"
+            className="min-w-[140px]"
+          >
+            {running || isActive ? (
+              <>
+                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                Running...
+              </>
+            ) : (
+              <>
+                <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Run Crawler
+              </>
+            )}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {runs.length === 0 ? (
+          <div className="text-center py-6 text-sm text-muted-foreground">
+            No crawler runs yet. Click "Run Crawler" to start.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {runs.slice(0, 5).map((run) => (
+              <div 
+                key={run.id} 
+                className={`rounded-lg border p-3 ${
+                  run.status === 'RUNNING' ? 'bg-blue-50 border-blue-300' :
+                  run.status === 'COMPLETED' ? 'bg-green-50 border-green-300' :
+                  run.status === 'FAILED' ? 'bg-red-50 border-red-300' :
+                  'bg-muted/50'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant={
+                        run.status === 'RUNNING' ? 'default' :
+                        run.status === 'COMPLETED' ? 'default' :
+                        run.status === 'FAILED' ? 'destructive' :
+                        'outline'
+                      }>
+                        {run.status}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(run.startedAt), { addSuffix: true })}
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      {run.itemsFound !== null && (
+                        <div className="text-muted-foreground">
+                          Found: <span className="font-medium text-foreground">{run.itemsFound}</span>
+                        </div>
+                      )}
+                      {run.itemsProcessed !== null && (
+                        <div className="text-muted-foreground">
+                          Processed: <span className="font-medium text-foreground">{run.itemsProcessed}</span>
+                        </div>
+                      )}
+                      {run.completedAt && (
+                        <div className="text-muted-foreground col-span-2">
+                          Duration: <span className="font-medium text-foreground">
+                            {Math.round((new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()) / 1000)}s
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {run.error && (
+                      <div className="mt-2 text-xs text-red-600 bg-red-100 p-2 rounded">
+                        Error: {run.error}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
