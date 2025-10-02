@@ -66,11 +66,15 @@ COPY --from=builder /app/node_modules ./node_modules
 # Copy scripts directory
 COPY --from=builder /app/scripts ./scripts
 
+# Create crawlee storage directory with proper permissions before switching to nextjs user
+RUN mkdir -p /tmp/crawlee-storage && chown -R nextjs:nodejs /tmp/crawlee-storage
+
 USER nextjs
 
 EXPOSE 3000
 
 ENV HOSTNAME=0.0.0.0
+ENV CRAWLEE_STORAGE_DIR=/tmp/crawlee-storage
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
