@@ -290,21 +290,43 @@ export default function EditCrawlerPage() {
   }
 
   function SourcesSection({ id }: { id: string }) {
-    const [sources, setSources] = React.useState<Array<{ id: string; url: string; type: string; enabled: boolean }>>([])
+    type Source = { 
+      id: string
+      url: string
+      type: string
+      enabled: boolean
+      maxPages?: number
+      maxDepth?: number
+      followLinks?: boolean
+    }
+    const [sources, setSources] = React.useState<Source[]>([])
     const [url, setUrl] = React.useState("")
     const [type, setType] = React.useState("rss")
+    const [maxPages, setMaxPages] = React.useState(10)
+    const [maxDepth, setMaxDepth] = React.useState(2)
+    const [followLinks, setFollowLinks] = React.useState(true)
     const [loading, setLoading] = React.useState(false)
+    
     React.useEffect(() => { (async () => {
       try {
         const r = await fetch(`/api/admin/crawlers/${id}/sources`, { credentials: 'include' })
         if (r.ok) setSources(await r.json())
       } catch {}
     })() }, [id])
+    
     async function addSource() {
       if (!url) return
       setLoading(true)
       try {
-        const r = await fetch(`/api/admin/crawlers/${id}/sources`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ url, type }) })
+        const payload = type === 'web' 
+          ? { url, type, maxPages, maxDepth, followLinks }
+          : { url, type }
+        const r = await fetch(`/api/admin/crawlers/${id}/sources`, { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          credentials: 'include', 
+          body: JSON.stringify(payload) 
+        })
         if (r.ok) {
           const created = await r.json()
           setSources((s) => [created, ...s])
@@ -312,33 +334,124 @@ export default function EditCrawlerPage() {
         }
       } finally { setLoading(false) }
     }
+    
     async function toggleEnabled(srcId: string, enabled: boolean) {
-      await fetch(`/api/admin/crawlers/${id}/sources/${srcId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ enabled }) })
+      await fetch(`/api/admin/crawlers/${id}/sources/${srcId}`, { 
+        method: 'PUT', 
+        headers: { 'Content-Type': 'application/json' }, 
+        credentials: 'include', 
+        body: JSON.stringify({ enabled }) 
+      })
       setSources((s) => s.map(x => x.id === srcId ? { ...x, enabled } : x))
     }
+    
     async function removeSource(srcId: string) {
       await fetch(`/api/admin/crawlers/${id}/sources/${srcId}`, { method: 'DELETE', credentials: 'include' })
       setSources((s) => s.filter(x => x.id !== srcId))
     }
+    
     return (
-      <div className="space-y-3">
-        <div className="flex gap-2">
-          <Input placeholder="https://example.com/feed.xml or https://example.com" value={url} onChange={(e) => setUrl(e.target.value)} />
-          <Input className="w-28" value={type} onChange={(e) => setType(e.target.value)} />
-          <Button onClick={addSource} disabled={!url || loading}>{loading ? 'Adding…' : 'Add'}</Button>
+      <div className="space-y-4">
+        <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+          <div className="font-medium text-sm">Add Source</div>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input 
+                placeholder="https://example.com/feed.xml or https://example.com" 
+                value={url} 
+                onChange={(e) => setUrl(e.target.value)} 
+              />
+              <select 
+                className="rounded-md border bg-background px-3 py-2 text-sm w-32"
+                value={type} 
+                onChange={(e) => setType(e.target.value)}
+              >
+                <option value="rss">RSS Feed</option>
+                <option value="web">Web Crawl</option>
+              </select>
+            </div>
+            
+            {type === 'web' && (
+              <div className="grid grid-cols-3 gap-3 rounded border bg-background/50 p-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Max Pages</label>
+                  <Input 
+                    type="number" 
+                    min={1} 
+                    max={100} 
+                    value={maxPages} 
+                    onChange={(e) => setMaxPages(parseInt(e.target.value))} 
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Max Depth</label>
+                  <Input 
+                    type="number" 
+                    min={0} 
+                    max={5} 
+                    value={maxDepth} 
+                    onChange={(e) => setMaxDepth(parseInt(e.target.value))} 
+                  />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input 
+                      type="checkbox" 
+                      checked={followLinks} 
+                      onChange={(e) => setFollowLinks(e.target.checked)}
+                      className="rounded"
+                    />
+                    Follow Links
+                  </label>
+                </div>
+              </div>
+            )}
+            
+            <div>
+              <Button onClick={addSource} disabled={!url || loading}>
+                {loading ? 'Adding…' : `Add ${type === 'rss' ? 'RSS Feed' : 'Web Crawler'}`}
+              </Button>
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        
+        <div className="grid grid-cols-1 gap-3">
           {sources.map((s) => (
-            <div key={s.id} className="rounded border p-2 text-sm">
-              <div className="font-mono truncate" title={s.url}>{s.url}</div>
-              <div className="text-xs text-muted-foreground">type: {s.type} · enabled: {String(s.enabled)}</div>
-              <div className="mt-2 flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => toggleEnabled(s.id, !s.enabled)}>{s.enabled ? 'Disable' : 'Enable'}</Button>
-                <Button size="sm" variant="destructive" onClick={() => removeSource(s.id)}>Remove</Button>
+            <div key={s.id} className="rounded-lg border p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant={s.type === 'rss' ? 'default' : 'secondary'}>
+                      {s.type === 'rss' ? 'RSS' : 'WEB'}
+                    </Badge>
+                    <Badge variant={s.enabled ? 'default' : 'outline'}>
+                      {s.enabled ? 'Enabled' : 'Disabled'}
+                    </Badge>
+                  </div>
+                  <div className="font-mono text-sm truncate mb-2" title={s.url}>{s.url}</div>
+                  {s.type === 'web' && (
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <div>Max pages: {s.maxPages ?? 10} · Max depth: {s.maxDepth ?? 2}</div>
+                      <div>Follow links: {s.followLinks ? 'Yes' : 'No'}</div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => toggleEnabled(s.id, !s.enabled)}>
+                    {s.enabled ? 'Disable' : 'Enable'}
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => removeSource(s.id)}>
+                    Remove
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
-          {sources.length === 0 && <div className="text-sm text-muted-foreground">No sources yet.</div>}
+          {sources.length === 0 && (
+            <div className="text-center text-sm text-muted-foreground py-8">
+              No sources yet. Add an RSS feed or web crawler to start collecting content.
+            </div>
+          )}
         </div>
       </div>
     )

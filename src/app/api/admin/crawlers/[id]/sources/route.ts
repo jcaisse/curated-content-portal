@@ -16,7 +16,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   const body = await req.json().catch(() => null)
   if (!body?.url || !body?.type) return NextResponse.json({ error: 'url and type required' }, { status: 400 })
-  const created = await db.crawlerSource.create({ data: { crawlerId: id, url: body.url, type: String(body.type), enabled: body.enabled ?? true } })
+  
+  const data: any = { 
+    crawlerId: id, 
+    url: body.url, 
+    type: String(body.type), 
+    enabled: body.enabled ?? true 
+  }
+  
+  // Add web crawler options if type is 'web'
+  if (body.type === 'web') {
+    if (body.maxPages !== undefined) data.maxPages = parseInt(body.maxPages) || 10
+    if (body.maxDepth !== undefined) data.maxDepth = parseInt(body.maxDepth) || 2
+    if (body.followLinks !== undefined) data.followLinks = Boolean(body.followLinks)
+  }
+  
+  const created = await db.crawlerSource.create({ data })
   return NextResponse.json(created)
 }
 

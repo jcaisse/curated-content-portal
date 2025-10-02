@@ -28,11 +28,24 @@ export async function fetchRss(url: string, limit: number): Promise<SourceFetchR
   })).filter((item) => !!item.url)
 }
 
-export async function fetchWeb(url: string): Promise<SourceFetchResult[]> {
+export async function fetchWeb(
+  url: string, 
+  options?: { 
+    maxPages?: number
+    maxDepth?: number
+    followLinks?: boolean
+  }
+): Promise<SourceFetchResult[]> {
+  const maxPages = options?.maxPages ?? 1
+  const maxDepth = options?.maxDepth ?? 0
+  const followLinks = options?.followLinks ?? false
+  
   const results: SourceFetchResult[] = []
   const crawler = new CheerioCrawler({
-    maxRequestsPerCrawl: 1,
+    maxRequestsPerCrawl: maxPages,
     async requestHandler({ request, $, enqueueLinks }) {
+      const currentDepth = (request.userData.depth ?? 0) as number
+      
       const title = $('title').text().trim() || $('h1').first().text().trim()
       const summary = $('meta[name="description"]').attr('content') || $('p').first().text().trim()
       let imageUrl = $('meta[property="og:image"]').attr('content') || $('meta[name="twitter:image"]').attr('content')
@@ -40,6 +53,7 @@ export async function fetchWeb(url: string): Promise<SourceFetchResult[]> {
         imageUrl = new URL(imageUrl, request.url).href
       }
       const content = $('p').slice(0, 5).map((_, el) => $(el).text()).get().join('\n')
+      
       results.push({
         url: request.url,
         title,
@@ -48,18 +62,25 @@ export async function fetchWeb(url: string): Promise<SourceFetchResult[]> {
         imageUrl: imageUrl ?? undefined,
         source: new URL(request.url).hostname,
       })
-      await enqueueLinks({
-        strategy: 'same-domain',
-        transformRequestFunction(req) {
-          req.userData.depth = (request.userData.depth ?? 0) + 1
-          return req
-        },
-      })
+      
+      // Follow links if enabled and within depth limit
+      if (followLinks && currentDepth < maxDepth) {
+        await enqueueLinks({
+          strategy: 'same-domain',
+          transformRequestFunction(req) {
+            req.userData.depth = currentDepth + 1
+            return req
+          },
+          // Only enqueue if we haven't hit maxPages
+          globs: results.length < maxPages ? ['**'] : [],
+        })
+      }
     },
-    maxRequestRetries: 1,
-    maxConcurrency: 2,
+    maxRequestRetries: 2,
+    maxConcurrency: 3,
     preNavigationHooks: [
       async ({ request }, gotoOptions) => {
+        // Faster loading for deeper pages
         if ((request.userData.depth ?? 0) > 0) {
           gotoOptions.waitUntil = 'domcontentloaded'
         }
@@ -67,17 +88,34 @@ export async function fetchWeb(url: string): Promise<SourceFetchResult[]> {
     ],
   })
 
-  await crawler.run([url])
+  await crawler.run([{ url, userData: { depth: 0 } }])
   return results
 }
 
-export async function crawlSource({ source, limit }: { source: { type: string; url: string }; limit: number }) {
+export async function crawlSource({ 
+  source, 
+  limit,
+  webOptions 
+}: { 
+  source: { type: string; url: string }
+  limit: number
+  webOptions?: {
+    maxPages?: number
+    maxDepth?: number
+    followLinks?: boolean
+  }
+}) {
   if (source.type === 'rss') {
     const items = await fetchRss(source.url, limit)
     return { items }
   }
 
-  const items = await fetchWeb(source.url)
+  // Web crawling with optional link following
+  const items = await fetchWeb(source.url, {
+    maxPages: webOptions?.maxPages ?? limit,
+    maxDepth: webOptions?.maxDepth ?? 2,
+    followLinks: webOptions?.followLinks ?? true,
+  })
   return { items: items.slice(0, limit) }
 }
 

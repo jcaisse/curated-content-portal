@@ -122,7 +122,13 @@ export async function runCrawler(options: CrawlOptions) {
     let itemsQueued = 0
 
     for (const source of sources) {
-      const fetched = await crawlSource({ source, limit })
+      const webOptions = source.type === 'web' ? {
+        maxPages: source.maxPages ?? 10,
+        maxDepth: source.maxDepth ?? 2,
+        followLinks: source.followLinks ?? true,
+      } : undefined
+      
+      const fetched = await crawlSource({ source, limit, webOptions })
       for (const item of fetched.items) {
         itemsFound += 1
         if (itemsFound > limit) break
