@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { runCrawler } from '@/lib/services/ingestion/crawl-runner'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -17,6 +16,9 @@ export async function POST(
   const { id: crawlerId } = await params
 
   try {
+    // Dynamically import the crawler to avoid build-time issues
+    const { runCrawler } = await import('@/lib/services/ingestion/crawl-runner')
+    
     // Start the crawler in the background
     // Note: This is a simple implementation. For production, you'd want to use a job queue
     runCrawler({ crawlerId }).catch((error) => {
