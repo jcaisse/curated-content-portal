@@ -49,9 +49,10 @@ export async function fetchWeb(
   const results: SourceFetchResult[] = []
   const crawler = new CheerioCrawler({
     maxRequestsPerCrawl: maxPages,
-    persistStorage: false,
     async requestHandler({ request, $, enqueueLinks }) {
       const currentDepth = (request.userData.depth ?? 0) as number
+      
+      console.log(`   📄 Fetching page ${results.length + 1}/${maxPages}: ${request.url} (depth: ${currentDepth})`)
       
       const title = $('title').text().trim() || $('h1').first().text().trim()
       const summary = $('meta[name="description"]').attr('content') || $('p').first().text().trim()
@@ -60,6 +61,8 @@ export async function fetchWeb(
         imageUrl = new URL(imageUrl, request.url).href
       }
       const content = $('p').slice(0, 5).map((_, el) => $(el).text()).get().join('\n')
+      
+      console.log(`      ✓ Extracted: "${title.substring(0, 60)}${title.length > 60 ? '...' : ''}"`)
       
       results.push({
         url: request.url,
