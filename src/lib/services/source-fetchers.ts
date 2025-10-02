@@ -1,5 +1,7 @@
 import rssParser from "rss-parser"
-import { CheerioCrawler } from "crawlee"
+import { CheerioCrawler, Configuration } from "crawlee"
+import os from "os"
+import path from "path"
 
 export interface SourceFetchResult {
   url: string
@@ -40,8 +42,18 @@ export async function fetchWeb(
   const maxDepth = options?.maxDepth ?? 0
   const followLinks = options?.followLinks ?? false
   
+  // Configure crawlee to use /tmp for storage (writable in Docker)
+  const storageDir = process.env.CRAWLEE_STORAGE_DIR || path.join(os.tmpdir(), 'crawlee-storage')
+  const config = new Configuration({
+    storageClientOptions: {
+      localDataDirectory: storageDir,
+    },
+    persistStorage: false, // Don't persist between runs
+  })
+  
   const results: SourceFetchResult[] = []
   const crawler = new CheerioCrawler({
+    ...config.getOptions(),
     maxRequestsPerCrawl: maxPages,
     async requestHandler({ request, $, enqueueLinks }) {
       const currentDepth = (request.userData.depth ?? 0) as number
