@@ -39,8 +39,8 @@ RUN node -e "console.log('Runtime:', process.platform, process.arch)"
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Install curl, openssl, and postgresql-client for health checks and Prisma
-RUN apt-get update && apt-get install -y curl openssl postgresql-client && rm -rf /var/lib/apt/lists/*
+# Install curl, openssl, postgresql-client, and procps for health checks, Prisma, and Crawlee
+RUN apt-get update && apt-get install -y curl openssl postgresql-client procps && rm -rf /var/lib/apt/lists/*
 
 # Copy the built application
 COPY --from=builder /app/public ./public
