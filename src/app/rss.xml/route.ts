@@ -15,7 +15,7 @@ export async function GET() {
       take: 50,
       include: {
         keyword: true,
-        author: {
+        authorUser: {
           select: {
             name: true,
             email: true
@@ -45,7 +45,7 @@ export async function GET() {
       <link>${post.url}</link>
       <guid isPermaLink="false">${post.id}</guid>
       <pubDate>${post.publishedAt ? new Date(post.publishedAt).toUTCString() : new Date(post.createdAt).toUTCString()}</pubDate>
-      ${post.author ? `<author><![CDATA[${post.author.name || post.author.email}]]></author>` : ''}
+      ${post.authorUser ? `<author><![CDATA[${post.authorUser.name || post.authorUser.email}]]></author>` : post.author ? `<author><![CDATA[${post.author}]]></author>` : ''}
       ${post.keyword ? `<category><![CDATA[${post.keyword.name}]]></category>` : ''}
       ${post.imageUrl ? `<enclosure url="${post.imageUrl}" type="image/jpeg"/>` : ''}
     </item>
