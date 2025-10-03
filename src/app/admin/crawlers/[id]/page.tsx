@@ -306,6 +306,89 @@ export default function EditCrawlerPage() {
     const [maxDepth, setMaxDepth] = React.useState(2)
     const [followLinks, setFollowLinks] = React.useState(true)
     const [loading, setLoading] = React.useState(false)
+    const { toast } = useToast()
+    
+    // Source Recommender
+    type RecommendedSource = {
+      url: string
+      type: 'rss' | 'web'
+      title: string
+      description: string
+      reason: string
+    }
+    const [recommendations, setRecommendations] = React.useState<RecommendedSource[]>([])
+    const [recommending, setRecommending] = React.useState(false)
+    const [showRecommendations, setShowRecommendations] = React.useState(false)
+    const [addingRecommendation, setAddingRecommendation] = React.useState<string | null>(null)
+    
+    async function getRecommendations() {
+      setRecommending(true)
+      try {
+        const r = await fetch(`/api/admin/crawlers/${id}/recommend-sources`, { 
+          method: 'POST',
+          credentials: 'include' 
+        })
+        
+        if (!r.ok) {
+          const error = await r.json().catch(() => null)
+          throw new Error(error?.error || 'Failed to get recommendations')
+        }
+        
+        const data = await r.json()
+        setRecommendations(data.recommendations || [])
+        setShowRecommendations(true)
+        
+        if (data.existingSourcesFiltered > 0) {
+          toast({
+            title: 'Recommendations Filtered',
+            description: `${data.existingSourcesFiltered} source(s) already added were filtered out.`,
+          })
+        }
+      } catch (error: any) {
+        toast({
+          title: 'Failed to Get Recommendations',
+          description: error?.message || 'An error occurred',
+          variant: 'destructive',
+        })
+      } finally {
+        setRecommending(false)
+      }
+    }
+    
+    async function addRecommendedSource(rec: RecommendedSource) {
+      setAddingRecommendation(rec.url)
+      try {
+        const payload = rec.type === 'web' 
+          ? { url: rec.url, type: rec.type, maxPages: 10, maxDepth: 2, followLinks: true }
+          : { url: rec.url, type: rec.type }
+          
+        const r = await fetch(`/api/admin/crawlers/${id}/sources`, { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          credentials: 'include', 
+          body: JSON.stringify(payload) 
+        })
+        
+        if (r.ok) {
+          const created = await r.json()
+          setSources((s) => [created, ...s])
+          setRecommendations((recs) => recs.filter((r) => r.url !== rec.url))
+          
+          toast({
+            title: 'Source Added',
+            description: `${rec.title} has been added to your sources.`,
+          })
+        }
+      } catch (error: any) {
+        toast({
+          title: 'Failed to Add Source',
+          description: error?.message || 'An error occurred',
+          variant: 'destructive',
+        })
+      } finally {
+        setAddingRecommendation(null)
+      }
+    }
     
     React.useEffect(() => { (async () => {
       try {
@@ -352,8 +435,108 @@ export default function EditCrawlerPage() {
     
     return (
       <div className="space-y-4">
+        {/* AI Source Recommender */}
+        <Card className="border-2 border-blue-200 bg-blue-50/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <svg className="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                AI Source Recommender
+              </CardTitle>
+              <Button 
+                onClick={getRecommendations} 
+                disabled={recommending}
+                variant="default"
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {recommending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Get Recommendations
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+          {showRecommendations && recommendations.length > 0 && (
+            <CardContent>
+              <div className="space-y-3">
+                <div className="text-sm text-muted-foreground mb-2">
+                  AI-recommended sources based on your keywords ({recommendations.length} suggestions)
+                </div>
+                {recommendations.map((rec) => (
+                  <div 
+                    key={rec.url} 
+                    className="rounded-lg border bg-white p-4 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={rec.type === 'rss' ? 'default' : 'secondary'}>
+                            {rec.type === 'rss' ? 'RSS Feed' : 'Web Crawler'}
+                          </Badge>
+                          <span className="font-semibold text-sm">{rec.title}</span>
+                        </div>
+                        <div className="font-mono text-xs text-muted-foreground truncate" title={rec.url}>
+                          {rec.url}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {rec.description}
+                        </div>
+                        <div className="text-xs text-blue-600 bg-blue-50 rounded px-2 py-1 inline-block">
+                          💡 {rec.reason}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Button 
+                          size="sm" 
+                          onClick={() => addRecommendedSource(rec)}
+                          disabled={addingRecommendation === rec.url}
+                          className="min-w-[80px]"
+                        >
+                          {addingRecommendation === rec.url ? (
+                            <>
+                              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                              Adding...
+                            </>
+                          ) : (
+                            'Add Source'
+                          )}
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost"
+                          onClick={() => setRecommendations((recs) => recs.filter((r) => r.url !== rec.url))}
+                        >
+                          Dismiss
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          )}
+          {showRecommendations && recommendations.length === 0 && (
+            <CardContent>
+              <div className="text-center text-sm text-muted-foreground py-4">
+                No new recommendations available. All suggested sources are already added!
+              </div>
+            </CardContent>
+          )}
+        </Card>
+        
         <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
-          <div className="font-medium text-sm">Add Source</div>
+          <div className="font-medium text-sm">Add Source Manually</div>
           <div className="space-y-3">
             <div className="flex gap-2">
               <Input 
