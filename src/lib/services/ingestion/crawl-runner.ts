@@ -5,7 +5,7 @@ import { db } from "@/lib/db"
 import { generateUrlHash, normalizeUrl } from "@/lib/url-utils"
 import { moderationRepository } from "@/lib/prisma/moderation"
 import { scoreContentAgainstKeywords } from "@/lib/services/scoring-service"
-import { extractKeywords } from "@/lib/services/keyword-service"
+// NOTE: extractKeywords is lazy-loaded to avoid loading env at build time
 import { crawlSource, type SourceFetchResult } from "@/lib/services/source-fetchers"
 
 export interface CrawlRunContext {
@@ -82,6 +82,8 @@ export async function processSourceResult(context: CrawlRunContext, result: Sour
   
   console.log(`   ✅ Above threshold, queuing for moderation`)
 
+  // Dynamically import to avoid loading env at build time
+  const { extractKeywords } = await import("@/lib/services/keyword-service")
   const extractedKeywords = await extractKeywords({
     text: `${result.title ?? ""}\n${result.summary ?? ""}\n${result.content ?? ""}`,
     existingKeywords: context.keywords,
