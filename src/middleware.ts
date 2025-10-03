@@ -6,7 +6,13 @@ export function middleware(request: NextRequest) {
   const url = request.nextUrl
 
   // Get the base domain from environment (default to spoot.com)
-  const baseDomain = process.env.DOMAIN || 'spoot.com'
+  // If DOMAIN is portal.spoot.com, extract spoot.com
+  let baseDomain = process.env.DOMAIN || 'spoot.com'
+  if (baseDomain.startsWith('portal.')) {
+    baseDomain = baseDomain.replace('portal.', '')
+  } else if (baseDomain.startsWith('www.')) {
+    baseDomain = baseDomain.replace('www.', '')
+  }
   
   // Skip middleware for localhost and direct IP access
   if (
