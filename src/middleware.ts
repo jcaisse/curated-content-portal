@@ -5,14 +5,11 @@ export function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || ''
   const url = request.nextUrl
 
-  // Get the base domain from environment (default to spoot.com)
-  // If DOMAIN is portal.spoot.com, extract spoot.com
-  let baseDomain = process.env.DOMAIN || 'spoot.com'
-  if (baseDomain.startsWith('portal.')) {
-    baseDomain = baseDomain.replace('portal.', '')
-  } else if (baseDomain.startsWith('www.')) {
-    baseDomain = baseDomain.replace('www.', '')
-  }
+  // Extract base domain from hostname
+  // For subdomains like ginmeup.spoot.com, we need to identify the base domain
+  // We'll extract the last two parts of the hostname as the base domain
+  const parts = hostname.split('.')
+  const baseDomain = parts.length >= 2 ? parts.slice(-2).join('.') : hostname
   
   // Skip middleware for localhost and direct IP access
   if (
