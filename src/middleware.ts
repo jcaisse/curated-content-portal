@@ -32,9 +32,6 @@ export function middleware(request: NextRequest) {
   }
 
   // Check if this is a subdomain request
-  // Extract subdomain: ginmeup.spoot.com -> ginmeup
-  const parts = hostname.split('.')
-  
   // If hostname is exactly baseDomain (e.g., spoot.com or portal.spoot.com), it's the main site
   if (
     hostname === baseDomain ||
