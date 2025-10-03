@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import OpenAI from 'openai'
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -52,6 +47,12 @@ export async function POST(
         { status: 400 }
       )
     }
+
+    // Lazy-load OpenAI to avoid build-time env validation
+    const OpenAI = (await import('openai')).default
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
 
     // Use ChatGPT to recommend sources
     const prompt = `You are a content curation expert. Based on the following keywords, recommend high-quality, reliable sources (websites and RSS feeds) that can be scraped for relevant content.
