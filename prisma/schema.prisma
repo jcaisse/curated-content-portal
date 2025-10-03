@@ -44,7 +44,7 @@ model User {
   email         String    @unique
   emailVerified DateTime?
   image         String?
-  password      String?   // For credentials authentication
+  password      String? // For credentials authentication
   role          UserRole  @default(VIEWER)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -75,6 +75,13 @@ enum PostStatus {
   REJECTED
 }
 
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
 model VerificationToken {
   identifier String
   token      String   @unique
@@ -90,71 +97,83 @@ model AppConfig {
 }
 
 model Keyword {
-  id          String    @id @default(cuid())
-  name        String    @unique
+  id          String   @id @default(cuid())
+  name        String   @unique
   description String?
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   createdBy   String
 
-  user  User          @relation(fields: [createdBy], references: [id])
+  user  User       @relation(fields: [createdBy], references: [id])
   posts Post[]
   runs  CrawlRun[]
 }
 
 model CrawlRun {
-  id          String      @id @default(cuid())
-  keywordId   String
-  status      CrawlStatus @default(PENDING)
-  startedAt   DateTime?
-  completedAt DateTime?
-  itemsFound  Int         @default(0)
-  itemsProcessed Int      @default(0)
-  error       String?
-  createdAt   DateTime    @default(now())
+  id             String      @id @default(cuid())
+  crawlerId      String?
+  keywordId      String?
+  status         CrawlStatus @default(PENDING)
+  startedAt      DateTime?
+  completedAt    DateTime?
+  itemsFound     Int         @default(0)
+  itemsProcessed Int         @default(0)
+  error          String?
+  createdAt      DateTime    @default(now())
 
-  keyword Keyword @relation(fields: [keywordId], references: [id])
-  posts   Post[]
+  crawler         Crawler?                @relation(fields: [crawlerId], references: [id])
+  keyword         Keyword?                @relation(fields: [keywordId], references: [id])
+  posts           Post[]
+  moderationItems CrawlerModerationItem[]
 }
 
 model Post {
-  id          String     @id @default(cuid())
-  title       String
-  description String?
-  content     String?
-  url         String     @unique
-  imageUrl    String?
-  source      String
-  publishedAt DateTime?
-  status      PostStatus @default(DRAFT)
-  tags        String[]   // Array of tags
-  embedding   Unsupported("vector(1536)")? // pgvector for similarity search
-  urlHash     String     @unique
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id                String                       @id @default(cuid())
+  title             String
+  description       String?
+  summary           String? // Short summary/excerpt
+  content           String?
+  url               String                       @unique
+  imageUrl          String?
+  source            String
+  author            String? // Author name from crawled content
+  language          String?
+  publishedAt       DateTime?
+  status            PostStatus                   @default(DRAFT)
+  tags              String[] // Array of tags
+  embedding         Unsupported("vector(1536)")? // pgvector for similarity search
+  urlHash           String                       @unique
+  metadata          Json? // Additional metadata from crawler
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
 
-  keywordId String?
-  runId     String?
-  authorId  String?
+  keywordId         String?
+  runId             String?
+  authorId          String?
+  crawlerId         String?
+  moderationItemId  String? @unique // Link to moderation item
 
-  keyword Keyword?   @relation(fields: [keywordId], references: [id])
-  run     CrawlRun?  @relation(fields: [runId], references: [id])
-  author  User?      @relation(fields: [authorId], references: [id])
-  related RelatedPost[] @relation("PostRelated")
+  keyword          Keyword?                 @relation(fields: [keywordId], references: [id])
+  run              CrawlRun?                @relation(fields: [runId], references: [id])
+  authorUser       User?                    @relation(fields: [authorId], references: [id])
+  crawler          Crawler?                 @relation(fields: [crawlerId], references: [id])
+  moderationItem   CrawlerModerationItem?   @relation(fields: [moderationItemId], references: [id])
+  related          RelatedPost[]            @relation("PostRelated")
   relatedTo RelatedPost[] @relation("PostRelatedTo")
+  // Vector index will be created via raw SQL migration
 
   @@index([status])
   @@index([urlHash])
   @@index([publishedAt])
   @@index([createdAt])
-  // Vector index will be created via raw SQL migration
+  @@index([crawlerId])
 }
 
 model RelatedPost {
-  id       String @id @default(cuid())
-  postId   String
-  relatedId String
+  id         String @id @default(cuid())
+  postId     String
+  relatedId  String
   similarity Float
 
   post    Post @relation("PostRelated", fields: [postId], references: [id], onDelete: Cascade)
@@ -172,4 +191,99 @@ model SourceConfig {
   rateLimit Int      @default(1000) // requests per hour
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// New Crawler models
+model Crawler {
+  id            String    @id @default(cuid())
+  name          String    @unique
+  description   String?
+  isActive      Boolean   @default(true)
+  minMatchScore Float     @default(0.75)
+  lastRunAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  keywords CrawlerKeyword[]
+  runs     CrawlRun[]
+  posts    Post[]
+  sources  CrawlerSource[]
+  portal   CrawlerPortal?
+  queue    CrawlerModerationItem[]
+}
+
+model CrawlerKeyword {
+  id        String   @id @default(cuid())
+  crawlerId String
+  term      String
+  source    String   @default("manual") // 'ai' | 'manual'
+  createdAt DateTime @default(now())
+
+  crawler Crawler @relation(fields: [crawlerId], references: [id])
+
+  @@unique([crawlerId, term])
+  @@index([crawlerId])
+}
+
+model CrawlerSource {
+  id           String   @id @default(cuid())
+  crawlerId    String
+  type         String // 'rss' | 'web'
+  url          String
+  enabled      Boolean  @default(true)
+  lastStatus   String?
+  maxPages     Int?     @default(10) // For web crawlers: max pages to crawl
+  maxDepth     Int?     @default(2)  // For web crawlers: max link depth
+  followLinks  Boolean? @default(true) // For web crawlers: follow links on same domain
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  crawler Crawler @relation(fields: [crawlerId], references: [id])
+
+  @@unique([crawlerId, url])
+  @@index([crawlerId, enabled])
+}
+
+model CrawlerPortal {
+  id          String   @id @default(cuid())
+  crawlerId   String   @unique
+  subdomain   String   @unique
+  title       String?
+  description String?
+  theme       Json?
+  subdomainOnHold Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  crawler Crawler @relation(fields: [crawlerId], references: [id])
+}
+
+model CrawlerModerationItem {
+  id              String           @id @default(cuid())
+  crawlerId       String
+  runId           String?
+  url             String
+  urlHash         String
+  title           String
+  summary         String?
+  content         String?
+  imageUrl        String?
+  author          String?
+  source          String
+  language        String?
+  score           Float            @default(0)
+  status          ModerationStatus @default(PENDING)
+  discoveredAt    DateTime         @default(now())
+  decidedAt       DateTime?
+  decidedBy       String?
+  rejectionReason String?
+  metadata        Json?
+
+  crawler Crawler   @relation(fields: [crawlerId], references: [id])
+  run     CrawlRun? @relation(fields: [runId], references: [id])
+  post    Post?     // Created when approved
+
+  @@unique([crawlerId, urlHash])
+  @@index([crawlerId, status])
+  @@index([status, discoveredAt])
 }

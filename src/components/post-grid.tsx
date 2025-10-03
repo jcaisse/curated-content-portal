@@ -57,9 +57,9 @@ export function PostGrid({ posts }: PostGridProps) {
             </CardHeader>
             
             <CardContent className="pt-0">
-              {post.description && (
+              {(post.summary || post.description) && (
                 <p className="text-sm text-muted-foreground line-clamp-3 mb-3">
-                  {post.description}
+                  {post.summary || post.description}
                 </p>
               )}
               

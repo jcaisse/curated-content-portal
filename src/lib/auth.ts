@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs"
 // UserRole is now a string type
 
 export const authOptions = {
+  trustHost: true,
   adapter: PrismaAdapter(db),
   providers: [
     CredentialsProvider({

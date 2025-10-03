@@ -1,3 +1,17 @@
+SHA := $(shell git rev-parse --short HEAD)
+
+.PHONY: build-image run-migrate run-app
+
+build-image:
+	node scripts/generate-build-info.js
+	docker build --build-arg GIT_COMMIT_SHA=$(SHA) -t cleanportal-app:$(SHA) .
+
+run-migrate:
+	APP_IMAGE=cleanportal-app:$(SHA) docker compose up migrate
+
+run-app:
+	APP_IMAGE=cleanportal-app:$(SHA) docker compose up -d app scheduler
+
 .PHONY: help dev build start test e2e compose-dev compose-prod clean
 
 # Default target

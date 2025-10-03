@@ -39,8 +39,8 @@ RUN node -e "console.log('Runtime:', process.platform, process.arch)"
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Install curl, openssl, and postgresql-client for health checks and Prisma
-RUN apt-get update && apt-get install -y curl openssl postgresql-client && rm -rf /var/lib/apt/lists/*
+# Install curl, openssl, postgresql-client, and procps for health checks, Prisma, and Crawlee
+RUN apt-get update && apt-get install -y curl openssl postgresql-client procps && rm -rf /var/lib/apt/lists/*
 
 # Copy the built application
 COPY --from=builder /app/public ./public
@@ -66,11 +66,15 @@ COPY --from=builder /app/node_modules ./node_modules
 # Copy scripts directory
 COPY --from=builder /app/scripts ./scripts
 
+# Create crawlee storage directory with proper permissions before switching to nextjs user
+RUN mkdir -p /tmp/crawlee-storage && chown -R nextjs:nodejs /tmp/crawlee-storage
+
 USER nextjs
 
 EXPOSE 3000
 
 ENV HOSTNAME=0.0.0.0
+ENV CRAWLEE_STORAGE_DIR=/tmp/crawlee-storage
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

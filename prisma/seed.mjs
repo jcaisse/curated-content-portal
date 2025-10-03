@@ -20,6 +20,19 @@ try {
     create: { email, name: 'Admin', role: 'ADMIN', password: hash }
   });
   console.log(`Seed: ensured admin ${email}`);
+
+  // Minimal default crawler to bootstrap UI
+  await prisma.crawler.upsert({
+    where: { name: 'Default Crawler' },
+    update: {},
+    create: {
+      name: 'Default Crawler',
+      description: 'Starter crawler created by seed script',
+      isActive: true,
+      minMatchScore: 0.75
+    }
+  });
+  console.log('Seed: ensured Default Crawler');
   process.exit(0);
 } catch (e) {
   console.error('Seed error:', e?.message || e);

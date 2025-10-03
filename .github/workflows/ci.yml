@@ -1,3 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      docker:
+        image: docker:24.0.9-dind
+        privileged: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+
+      - name: Install Playwright Browsers
+        run: |
+          npx playwright install --with-deps
+
+      - name: Prepare .secrets env
+        run: |
+          mkdir -p .secrets
+          cat > .secrets/.env.local <<'EOF'
+          DATABASE_URL=postgresql://postgres:postgres@db:5432/curated_content_portal?schema=public
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=postgres
+          POSTGRES_DB=curated_content_portal
+          POSTGRES_PORT=5432
+          APP_PORT=3000
+          NODE_ENV=production
+          NEXTAUTH_URL=http://localhost:3000
+          NEXTAUTH_SECRET=dev-secret-please-change
+          OPENAI_API_KEY=
+          ADMIN_EMAIL=admin@example.com
+          ADMIN_PASSWORD=adminadmin
+          DOMAIN=localhost
+          EMAIL=local@example.com
+          AI_DISABLED=true
+          ADMIN_INGEST_KEY=dev-ingest-key
+          RSS_FEED_URLS=https://example.com/feed1.xml
+          WEB_CRAWL_ENABLED=false
+          CRAWL_INTERVAL_HOURS=24
+          FILE_STORAGE_STRATEGY=url_only
+          MAX_CRAWL_ITEMS_PER_RUN=25
+          CONTENT_REVIEW_THRESHOLD=0.7
+          AUTO_PUBLISH_ENABLED=false
+          RATE_LIMIT_REQUESTS_PER_MINUTE=60
+          RATE_LIMIT_BURST=10
+          ANALYTICS_ENABLED=false
+          BCRYPT_ROUNDS=10
+          SESSION_MAX_AGE=86400
+          LOG_LEVEL=info
+          REDIS_URL=redis://localhost:6379
+          PORT=3000
+          EOF
+
+      - name: Generate build info
+        run: node scripts/generate-build-info.js
+
+      - name: Build app image
+        run: |
+          docker build -t cleanportal-app:ci .
+
+      - name: Start DB
+        run: |
+          docker compose --env-file ./.secrets/.env.local up -d db
+          for i in {1..60}; do
+            if docker inspect -f '{{json .State.Health.Status}}' curated-content-postgres | grep -q healthy; then echo DB healthy; break; fi; sleep 2; done
+
+      - name: Run migrations + seed
+        run: |
+          docker compose --env-file ./.secrets/.env.local up migrate
+
+      - name: Start app
+        run: |
+          docker compose --env-file ./.secrets/.env.local up -d app
+          for i in {1..60}; do
+            if curl -sf http://localhost:3000/api/health >/dev/null; then echo App healthy; break; fi; sleep 2; done
+
+      - name: Run headless Playwright tests
+        env:
+          E2E_ADMIN_EMAIL: admin@example.com
+          E2E_ADMIN_PASSWORD: adminadmin
+        run: |
+          npx playwright test --reporter=line --workers=2
+
+      - name: Compose logs on failure
+        if: failure()
+        run: |
+          docker compose logs --tail=300 db migrate app || true
+
 name: CI/CD Pipeline
 
 on:
