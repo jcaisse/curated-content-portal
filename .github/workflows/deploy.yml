@@ -81,8 +81,8 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd ${{ secrets.EC2_WORKDIR }}
-            docker compose pull app
-            docker compose run --rm app npm run db:migrate
+            docker-compose pull app
+            docker-compose run --rm app npm run db:migrate
 
   deploy:
     name: Deploy Application
@@ -97,8 +97,8 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd ${{ secrets.EC2_WORKDIR }}
-            docker compose pull app
-            docker compose up -d --remove-orphans
+            docker-compose pull app
+            docker-compose up -d --remove-orphans
 
       - name: Smoke test
         run: |
