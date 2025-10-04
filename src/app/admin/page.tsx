@@ -1,22 +1,31 @@
 import { db } from "@/lib/db"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { KeywordStats } from "@/components/admin/keyword-stats"
+import { UnmoderatedPosts } from "@/components/admin/unmoderated-posts"
 import { RecentPosts } from "@/components/admin/recent-posts"
 
 export default async function AdminDashboard() {
-  const [keywords, posts, crawlRuns] = await Promise.all([
-    db.keyword.findMany({
+  const [unmoderatedPosts, posts, crawlRuns] = await Promise.all([
+    db.crawlerModerationItem.findMany({
+      where: {
+        status: 'PENDING'
+      },
+      orderBy: {
+        discoveredAt: 'desc'
+      },
       include: {
-        _count: {
+        crawler: {
           select: {
-            posts: true,
-            runs: true
+            id: true,
+            name: true
           }
         }
       }
     }),
     db.post.findMany({
+      where: {
+        status: 'PUBLISHED'
+      },
       orderBy: {
         createdAt: 'desc'
       },
@@ -43,11 +52,11 @@ export default async function AdminDashboard() {
   ])
 
   const stats = {
-    totalKeywords: keywords.length,
+    totalKeywords: await db.keyword.count(),
     totalPosts: await db.post.count(),
     publishedPosts: await db.post.count({ where: { status: 'PUBLISHED' } }),
     draftPosts: await db.post.count({ where: { status: 'DRAFT' } }),
-    reviewPosts: await db.post.count({ where: { status: 'REVIEW' } })
+    unmoderatedPosts: unmoderatedPosts.length
   }
 
   return (
@@ -90,16 +99,16 @@ export default async function AdminDashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">In Review</CardTitle>
+            <CardTitle className="text-sm font-medium">Unmoderated</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.reviewPosts}</div>
+            <div className="text-2xl font-bold">{stats.unmoderatedPosts}</div>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <KeywordStats keywords={keywords} />
+        <UnmoderatedPosts posts={unmoderatedPosts} />
         <RecentPosts posts={posts} />
       </div>
 
