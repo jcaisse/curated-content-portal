@@ -52,11 +52,27 @@ export default async function AdminDashboard() {
   ])
 
   const stats = {
-    totalKeywords: await db.keyword.count(),
-    totalPosts: await db.post.count(),
-    publishedPosts: await db.post.count({ where: { status: 'PUBLISHED' } }),
-    draftPosts: await db.post.count({ where: { status: 'DRAFT' } }),
-    unmoderatedPosts: unmoderatedPosts.length
+    totalCrawlers: await db.crawler.count(),
+    activeCrawlers: await db.crawler.count({ where: { isActive: true } }),
+    itemsPublished: await db.post.count({ where: { status: 'PUBLISHED' } }),
+    pendingModeration: unmoderatedPosts.length,
+    crawlRunsToday: await db.crawlRun.count({
+      where: {
+        createdAt: {
+          gte: new Date(new Date().setHours(0, 0, 0, 0))
+        }
+      }
+    }),
+    itemsFoundToday: await db.crawlRun.aggregate({
+      where: {
+        createdAt: {
+          gte: new Date(new Date().setHours(0, 0, 0, 0))
+        }
+      },
+      _sum: {
+        itemsFound: true
+      }
+    }).then(result => result._sum.itemsFound || 0)
   }
 
   return (
@@ -69,22 +85,24 @@ export default async function AdminDashboard() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Keywords</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Crawlers</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalKeywords}</div>
+            <div className="text-2xl font-bold">{stats.totalCrawlers}</div>
+            <p className="text-xs text-muted-foreground mt-1">Configured</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Posts</CardTitle>
+            <CardTitle className="text-sm font-medium">Active Now</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalPosts}</div>
+            <div className="text-2xl font-bold">{stats.activeCrawlers}</div>
+            <p className="text-xs text-muted-foreground mt-1">Running crawlers</p>
           </CardContent>
         </Card>
 
@@ -93,16 +111,38 @@ export default async function AdminDashboard() {
             <CardTitle className="text-sm font-medium">Published</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.publishedPosts}</div>
+            <div className="text-2xl font-bold">{stats.itemsPublished}</div>
+            <p className="text-xs text-muted-foreground mt-1">All time</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-orange-200 bg-orange-50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-orange-900">Pending Review</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-900">{stats.pendingModeration}</div>
+            <p className="text-xs text-orange-700 mt-1">Needs moderation</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Unmoderated</CardTitle>
+            <CardTitle className="text-sm font-medium">Runs Today</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.unmoderatedPosts}</div>
+            <div className="text-2xl font-bold">{stats.crawlRunsToday}</div>
+            <p className="text-xs text-muted-foreground mt-1">Completed runs</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Items Today</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.itemsFoundToday}</div>
+            <p className="text-xs text-muted-foreground mt-1">Found items</p>
           </CardContent>
         </Card>
       </div>
