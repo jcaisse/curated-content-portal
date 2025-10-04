@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+// Tabs removed - now using vertical layout
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
@@ -74,7 +74,6 @@ export default function EditCrawlerPage() {
   const [stats, setStats] = React.useState<{ lastHour?: any; lastDay?: any; lastWeek?: any }>({})
   const [extracting, setExtracting] = React.useState(false)
   const [debugLines, setDebugLines] = React.useState<string[]>([])
-  const [activeTab, setActiveTab] = React.useState<string>("keywords")
 
   const load = React.useCallback(async () => {
     try {
@@ -747,22 +746,13 @@ export default function EditCrawlerPage() {
         </CardContent>
       </Card>
 
+      {/* Keywords Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Crawler Tools</CardTitle>
+          <CardTitle>Keywords</CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="flex flex-wrap gap-2">
-              <TabsTrigger value="keywords">Keywords</TabsTrigger>
-              <TabsTrigger value="sources">Sources</TabsTrigger>
-              <TabsTrigger value="queue">Moderation Queue</TabsTrigger>
-              <TabsTrigger value="portal">Portal</TabsTrigger>
-              <TabsTrigger value="posts">Posts</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="keywords">
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium">Paste up to 5000 chars for AI extraction</label>
@@ -840,31 +830,53 @@ export default function EditCrawlerPage() {
                 )}
               </div>
             </div>
-            </div>
-            </TabsContent>
+          </div>
+        </CardContent>
+      </Card>
 
-            <TabsContent value="sources">
-              <SourcesSection id={id} />
-            </TabsContent>
+      {/* Sources Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Sources</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SourcesSection id={id} />
+        </CardContent>
+      </Card>
 
-            <TabsContent value="queue">
-              <ModerationQueueSection
-                crawlerId={id}
-                onActionComplete={() => {
-                  loadKeywords()
-                  loadStats()
-                }}
-              />
-            </TabsContent>
+      {/* Moderation Queue Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Moderation Queue</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ModerationQueueSection
+            crawlerId={id}
+            onActionComplete={() => {
+              loadKeywords()
+              loadStats()
+            }}
+          />
+        </CardContent>
+      </Card>
 
-            <TabsContent value="portal">
-              <PortalSettingsSection crawlerId={id} />
-            </TabsContent>
+      {/* Portal Settings Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Portal Settings</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PortalSettingsSection crawlerId={id} />
+        </CardContent>
+      </Card>
 
-            <TabsContent value="posts">
-              <PostsSection id={id} />
-            </TabsContent>
-          </Tabs>
+      {/* Posts Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Posts</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PostsSection id={id} />
         </CardContent>
       </Card>
     </div>
