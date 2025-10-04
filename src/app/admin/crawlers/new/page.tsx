@@ -177,7 +177,7 @@ export default function NewCrawlerPage() {
             <div className="space-y-3">
               <div className="font-medium">Keywords to be saved with crawler ({confirmedKeywords.size})</div>
               <div className="text-xs text-muted-foreground">
-                These keywords will be added to the crawler when you click "Create" above.
+                These keywords will be added to the crawler when you click &quot;Create&quot; above.
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {Array.from(confirmedKeywords).map((term) => (
