@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button"
+import { Navbar } from "@/components/marketing/navbar"
 import { Footer } from "@/components/marketing/footer"
 import { Target, Eye, Heart, Sparkles, Users, TrendingUp, ArrowRight, Zap } from "lucide-react"
 import Link from "next/link"
@@ -52,8 +53,9 @@ export default function AboutPage() {
 
   return (
     <div className="min-h-screen">
+      <Navbar />
       {/* Hero Section */}
-      <section className="relative py-32 overflow-hidden">
+      <section className="relative py-32 overflow-hidden mt-16">
         <div className="absolute inset-0 gradient-animate opacity-10" />
         <div className="absolute bottom-0 left-0 w-96 h-96 rounded-full glow-accent opacity-20 blur-3xl" />
         

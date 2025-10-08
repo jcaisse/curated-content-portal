@@ -1,3 +1,4 @@
+import { Navbar } from "@/components/marketing/navbar"
 import { Footer } from "@/components/marketing/footer"
 import { FileText } from "lucide-react"
 
@@ -9,8 +10,9 @@ export const metadata = {
 export default function TermsPage() {
   return (
     <div className="min-h-screen">
+      <Navbar />
       {/* Hero Section */}
-      <section className="relative py-20 border-b">
+      <section className="relative py-20 border-b mt-16">
         <div className="container mx-auto px-6">
           <div className="max-w-4xl mx-auto text-center">
             <div 
