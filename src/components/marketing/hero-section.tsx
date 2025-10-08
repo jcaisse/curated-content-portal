@@ -36,6 +36,7 @@ export function HeroSection() {
             <Button 
               size="lg" 
               className="text-lg px-8 py-6 gradient-primary text-white hover:opacity-90 transition-opacity"
+              onClick={() => document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' })}
             >
               Start Monetizing
               <ArrowRight className="ml-2 h-5 w-5" />
@@ -45,6 +46,7 @@ export function HeroSection() {
               variant="outline" 
               className="text-lg px-8 py-6 border-2"
               style={{ borderColor: 'hsl(var(--corsoro-primary))' }}
+              onClick={() => window.location.href = '/platform'}
             >
               View Platform Features
             </Button>

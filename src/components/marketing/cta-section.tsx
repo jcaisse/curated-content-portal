@@ -7,7 +7,7 @@ import { ArrowRight, Mail } from "lucide-react"
 
 export function CTASection() {
   return (
-    <section className="py-32 relative overflow-hidden">
+    <section id="contact" className="py-32 relative overflow-hidden">
       {/* Background gradient */}
       <div className="absolute inset-0 gradient-primary opacity-10" />
       <div className="absolute top-0 left-0 w-96 h-96 rounded-full glow-primary opacity-20 blur-3xl" />
