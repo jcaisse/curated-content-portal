@@ -24,6 +24,12 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
+
+    /* Corsoro Brand Colors */
+    --corsoro-primary: 214 100% 50%;      /* Electric Blue #0066FF */
+    --corsoro-secondary: 270 91% 65%;     /* Purple #8B5CF6 */
+    --corsoro-accent: 187 100% 50%;       /* Cyan #00D9FF */
+    --corsoro-dark: 222 47% 11%;          /* Deep Navy #1A202C */
   }
 
   .dark {
@@ -55,5 +61,66 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* Corsoro Gradients */
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--corsoro-primary)) 0%, hsl(var(--corsoro-secondary)) 100%);
+  }
+  
+  .gradient-accent {
+    background: linear-gradient(135deg, hsl(var(--corsoro-accent)) 0%, hsl(var(--corsoro-primary)) 100%);
+  }
+  
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(var(--corsoro-primary)) 0%, hsl(var(--corsoro-secondary)) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Glassmorphism */
+  .glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .glass-dark {
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Animated gradient background */
+  .gradient-animate {
+    background: linear-gradient(-45deg, hsl(var(--corsoro-primary)), hsl(var(--corsoro-secondary)), hsl(var(--corsoro-accent)), hsl(var(--corsoro-primary)));
+    background-size: 400% 400%;
+    animation: gradient-shift 15s ease infinite;
+  }
+
+  @keyframes gradient-shift {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  /* Glow effects */
+  .glow-primary {
+    box-shadow: 0 0 20px hsla(var(--corsoro-primary) / 0.5);
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 20px hsla(var(--corsoro-accent) / 0.5);
   }
 }

@@ -6,8 +6,14 @@ import { AuthProvider } from "@/components/auth-provider"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Curated Content Portal",
-  description: "AI-powered content curation platform",
+  title: "Corsoro Media - AI-Optimized Fan Destinations for the Open Web",
+  description: "Turn name domains into revenue-generating assets. AI-optimized fan destinations that rank in search and appear as answers in AI engines. SEO + AEO + GEO monetization at scale.",
+  keywords: ["fan destinations", "domain monetization", "AI optimization", "SEO", "AEO", "GEO", "influencer monetization", "revenue share"],
+  openGraph: {
+    title: "Corsoro Media - Monetize the Open Web",
+    description: "AI-optimized fan destinations with $8-$20+ session RPM at scale",
+    type: "website",
+  },
 }
 
 export default function RootLayout({
