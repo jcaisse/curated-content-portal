@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { Footer } from "@/components/marketing/footer"
-import { Target, Eye, Heart, Sparkles, Users, TrendingUp, ArrowRight } from "lucide-react"
+import { Target, Eye, Heart, Sparkles, Users, TrendingUp, ArrowRight, Zap } from "lucide-react"
 import Link from "next/link"
 
 export const metadata = {
