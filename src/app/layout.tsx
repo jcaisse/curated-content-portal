@@ -1,9 +1,13 @@
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
+import { Poppins } from "next/font/google"
 import "./globals.css"
 import { AuthProvider } from "@/components/auth-provider"
 
-const inter = Inter({ subsets: ["latin"] })
+const poppins = Poppins({ 
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-poppins"
+})
 
 export const metadata: Metadata = {
   title: "Corsoro Media - AI-Optimized Fan Destinations for the Open Web",
@@ -23,7 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-blue-100`}>
+      <body className={`${poppins.className} bg-blue-100`}>
         <AuthProvider>
           {children}
         </AuthProvider>

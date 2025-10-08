@@ -25,11 +25,11 @@
     --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
 
-    /* Corsoro Brand Colors */
-    --corsoro-primary: 214 100% 50%;      /* Electric Blue #0066FF */
-    --corsoro-secondary: 270 91% 65%;     /* Purple #8B5CF6 */
-    --corsoro-accent: 187 100% 50%;       /* Cyan #00D9FF */
-    --corsoro-dark: 222 47% 11%;          /* Deep Navy #1A202C */
+    /* Corsoro Brand Colors - Beacons-inspired */
+    --corsoro-primary: 270 91% 65%;       /* Purple #8B5CF6 */
+    --corsoro-secondary: 330 81% 60%;     /* Pink/Magenta #EC4899 */
+    --corsoro-accent: 280 85% 75%;        /* Light Purple #C084FC */
+    --corsoro-dark: 260 40% 20%;          /* Deep Purple #2D1B4E */
   }
 
   .dark {
@@ -65,13 +65,13 @@
 }
 
 @layer utilities {
-  /* Corsoro Gradients */
+  /* Corsoro Gradients - Purple to Pink */
   .gradient-primary {
     background: linear-gradient(135deg, hsl(var(--corsoro-primary)) 0%, hsl(var(--corsoro-secondary)) 100%);
   }
   
   .gradient-accent {
-    background: linear-gradient(135deg, hsl(var(--corsoro-accent)) 0%, hsl(var(--corsoro-primary)) 100%);
+    background: linear-gradient(135deg, hsl(var(--corsoro-accent)) 0%, hsl(var(--corsoro-secondary)) 100%);
   }
   
   .gradient-text {
@@ -96,7 +96,7 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
   }
 
-  /* Animated gradient background */
+  /* Animated gradient background - Purple/Pink/Lavender */
   .gradient-animate {
     background: linear-gradient(-45deg, hsl(var(--corsoro-primary)), hsl(var(--corsoro-secondary)), hsl(var(--corsoro-accent)), hsl(var(--corsoro-primary)));
     background-size: 400% 400%;
