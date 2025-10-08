@@ -15,6 +15,8 @@ import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import { moderationStatusSchema } from "@/lib/api/validators"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ThemeSelector } from "@/components/admin/theme-selector"
+import { DEFAULT_THEME_ID } from "@/lib/themes"
 import { Loader2, RefreshCcw, Check, X, Archive, ExternalLink } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 
@@ -1148,7 +1150,7 @@ function PortalSettingsSection({ crawlerId }: { crawlerId: string }) {
   const [subdomain, setSubdomain] = React.useState("")
   const [title, setTitle] = React.useState("")
   const [description, setDescription] = React.useState("")
-  const [themeJson, setThemeJson] = React.useState("")
+  const [themeId, setThemeId] = React.useState(DEFAULT_THEME_ID)
   const { toast } = useToast()
 
   const load = React.useCallback(async () => {
@@ -1161,7 +1163,7 @@ function PortalSettingsSection({ crawlerId }: { crawlerId: string }) {
         setSubdomain("")
         setTitle("")
         setDescription("")
-        setThemeJson(JSON.stringify({ layout: "masonry", accentColor: "#2563eb" }, null, 2))
+        setThemeId(DEFAULT_THEME_ID)
         return
       }
       if (!res.ok) throw new Error(`Failed to load (${res.status})`)
@@ -1170,7 +1172,7 @@ function PortalSettingsSection({ crawlerId }: { crawlerId: string }) {
       setSubdomain(json.subdomain ?? "")
       setTitle(json.title ?? "")
       setDescription(json.description ?? "")
-      setThemeJson(JSON.stringify(json.theme ?? {}, null, 2) || "{}")
+      setThemeId((json.theme as any)?.id ?? DEFAULT_THEME_ID)
     } catch (error: any) {
       toast({ title: "Failed to load portal settings", description: error?.message, variant: "destructive" })
     } finally {
@@ -1189,14 +1191,7 @@ function PortalSettingsSection({ crawlerId }: { crawlerId: string }) {
         subdomain: subdomain || undefined,
         title: title || undefined,
         description: description || undefined,
-      }
-      if (themeJson.trim()) {
-        try {
-          body.theme = JSON.parse(themeJson)
-        } catch (error) {
-          toast({ title: "Invalid theme JSON", description: "Please provide valid JSON", variant: "destructive" })
-          return
-        }
+        theme: { id: themeId },
       }
 
       const res = await fetch(`/api/admin/crawlers/${crawlerId}/portal`, {
@@ -1246,22 +1241,11 @@ function PortalSettingsSection({ crawlerId }: { crawlerId: string }) {
       </div>
 
       <div className="space-y-2">
-        <label className="text-sm font-medium">Theme JSON</label>
-        <Textarea
-          value={themeJson}
-          onChange={(e) => setThemeJson(e.target.value)}
-          rows={6}
-          className="font-mono text-xs"
-        />
-        <div className="text-xs text-muted-foreground">
-          Configure colors, layout, etc. Must be valid JSON. Example:
-          <pre className="mt-2 rounded-lg bg-muted p-3 text-[11px]">
-{`{
-  "layout": "masonry",
-  "accentColor": "#2563eb"
-}`}
-          </pre>
-        </div>
+        <label className="text-sm font-medium">Portal Theme</label>
+        <p className="text-xs text-muted-foreground mb-4">
+          Choose a visual theme for your portal. Each theme includes colors, fonts, layouts, and styling.
+        </p>
+        <ThemeSelector selectedThemeId={themeId} onThemeChange={setThemeId} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

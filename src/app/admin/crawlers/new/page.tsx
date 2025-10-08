@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Stepper, Step } from "@/components/ui/stepper"
+import { ThemeSelector } from "@/components/admin/theme-selector"
+import { DEFAULT_THEME_ID, getTheme } from "@/lib/themes"
 import { ArrowLeft, ArrowRight, Sparkles, Plus, Trash2, Loader2 } from "lucide-react"
 
 const WIZARD_STEPS: Step[] = [
@@ -64,6 +66,7 @@ export default function NewCrawlerWizard() {
   const [subdomain, setSubdomain] = React.useState("")
   const [portalTitle, setPortalTitle] = React.useState("")
   const [portalDescription, setPortalDescription] = React.useState("")
+  const [themeId, setThemeId] = React.useState(DEFAULT_THEME_ID)
 
   const canProceed = () => {
     switch (currentStep) {
@@ -154,6 +157,7 @@ export default function NewCrawlerWizard() {
             subdomain: subdomain.trim(),
             title: portalTitle.trim() || name,
             description: portalDescription.trim() || description,
+            theme: { id: themeId },
           }),
         })
       }
@@ -722,10 +726,21 @@ export default function NewCrawlerWizard() {
                   https://{subdomain}.spoot.com
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Note: You'll need to add this subdomain to the Caddyfile and restart Caddy for SSL to work
+                  Note: SSL certificate will be automatically issued via Caddy on-demand TLS
                 </p>
               </div>
             )}
+
+            {/* Theme Selector */}
+            <div className="pt-4 border-t">
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Portal Theme</label>
+                <p className="text-xs text-muted-foreground">
+                  Choose a visual theme for your portal. You can change this later.
+                </p>
+              </div>
+              <ThemeSelector selectedThemeId={themeId} onThemeChange={setThemeId} />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -813,6 +828,10 @@ export default function NewCrawlerWizard() {
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Title:</span>
                     <span className="font-medium">{portalTitle || name}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Theme:</span>
+                    <span className="font-medium">{getTheme(themeId).name}</span>
                   </div>
                 </div>
               ) : (
