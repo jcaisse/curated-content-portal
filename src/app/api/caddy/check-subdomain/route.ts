@@ -24,8 +24,8 @@ export async function GET(request: NextRequest) {
     // e.g., "coffee.spoot.com" -> "coffee"
     const subdomain = domain.split(".")[0];
     
-    // Special case: main portal site is always valid
-    if (subdomain === "portal" || domain === process.env.DOMAIN) {
+    // Special case: main portal site and marketing site are always valid
+    if (subdomain === "portal" || subdomain === "www" || domain === process.env.DOMAIN) {
       return NextResponse.json({ valid: true }, { status: 200 });
     }
 
