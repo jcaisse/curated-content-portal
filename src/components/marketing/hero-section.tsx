@@ -22,7 +22,7 @@ export function HeroSection() {
 
           {/* Main headline */}
           <h1 className="text-6xl md:text-7xl lg:text-8xl font-bold mb-6 leading-tight">
-            Turn Name Domains Into{" "}
+            Turn Brand Names and Domain Names into{" "}
             <span className="gradient-text">Revenue-Generating Assets</span>
           </h1>
 

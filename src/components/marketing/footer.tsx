@@ -36,7 +36,7 @@ export function Footer() {
                 <span className="text-2xl font-bold gradient-text">Corsoro Media</span>
               </div>
               <p className="text-sm text-muted-foreground mb-6 max-w-sm">
-                Monetize the open web with AI-optimized fan destinations. Turn name domains into revenue-generating assets.
+                Monetize the open web with AI-optimized fan destinations. Turn brand names and domain names into revenue-generating assets.
               </p>
               <div className="flex gap-4">
                 <a 

@@ -11,7 +11,7 @@ const poppins = Poppins({
 
 export const metadata: Metadata = {
   title: "Corsoro Media - AI-Optimized Fan Destinations for the Open Web",
-  description: "Turn name domains into revenue-generating assets. AI-optimized fan destinations that rank in search and appear as answers in AI engines. SEO + AEO + GEO monetization at scale.",
+  description: "Turn brand names and domain names into revenue-generating assets. AI-optimized fan destinations that rank in search and appear as answers in AI engines. SEO + AEO + GEO monetization at scale.",
   keywords: ["fan destinations", "domain monetization", "AI optimization", "SEO", "AEO", "GEO", "influencer monetization", "revenue share"],
   openGraph: {
     title: "Corsoro Media - Monetize the Open Web",
