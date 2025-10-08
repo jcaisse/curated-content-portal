@@ -1,0 +1,101 @@
+version: '3.8'
+
+name: clean-portal-development
+
+services:
+  db-dev:
+    image: pgvector/pgvector:pg16
+    container_name: clean-portal-db-dev
+    env_file:
+      - .env.dev
+    volumes:
+      - db-data-dev:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-curated_content_portal}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - portal-network-dev
+
+  redis-dev:
+    image: redis:7-alpine
+    container_name: clean-portal-redis-dev
+    volumes:
+      - redis-data-dev:/data
+    ports:
+      - "6381:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - portal-network-dev
+
+  app-dev:
+    image: node:20-alpine
+    container_name: clean-portal-app-dev
+    env_file:
+      - .env.dev
+    depends_on:
+      db-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    working_dir: /app
+    volumes:
+      - ./src:/app/src:ro
+      - ./prisma:/app/prisma:ro
+      - ./public:/app/public:ro
+      - ./package.json:/app/package.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./next.config.js:/app/next.config.js:ro
+      - node-modules-dev:/app/node_modules
+    command: sh -c "apk add --no-cache openssl && npm install && npm run dev"
+    restart: unless-stopped
+    networks:
+      - portal-network-dev
+
+  caddy-dev:
+    image: caddy:2-alpine
+    container_name: clean-portal-caddy-dev
+    depends_on:
+      - app-dev
+    ports:
+      - "8080:80"
+      - "8443:443"
+      - "8443:443/udp"
+    volumes:
+      - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - caddy-data-dev:/data
+      - caddy-config-dev:/config
+    restart: unless-stopped
+    networks:
+      - portal-network-dev
+
+networks:
+  portal-network-dev:
+    name: clean-portal-dev-network
+    driver: bridge
+
+volumes:
+  db-data-dev:
+    name: clean-portal-dev_db-data-dev
+  redis-data-dev:
+    name: clean-portal-dev_redis_data_dev
+  caddy-data-dev:
+    name: clean-portal-dev_caddy_data_dev
+  caddy-config-dev:
+    name: clean-portal-dev_caddy_config_dev
+  node-modules-dev:
+    name: clean-portal-dev_node_modules
+

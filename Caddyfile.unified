@@ -1,0 +1,36 @@
+# Production domain
+portal.spoot.com {
+    reverse_proxy clean-portal-app-prod:3000
+    encode gzip
+    
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+    
+    log {
+        output stdout
+        format json
+    }
+}
+
+# Development domain
+dev.portal.spoot.com {
+    reverse_proxy clean-portal-app-dev:3000
+    encode gzip
+    
+    # Development-specific headers
+    header {
+        X-Environment "development"
+    }
+    
+    log {
+        output stdout
+        format json
+    }
+}
+

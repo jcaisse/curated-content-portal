@@ -1,0 +1,23 @@
+# Main portal domain
+portal.spoot.com {
+    reverse_proxy app:3000
+    
+    encode gzip
+    
+    log {
+        output stdout
+        format console
+    }
+}
+
+# Specific crawler portal
+haveadrinkonme.spoot.com {
+    reverse_proxy app:3000
+    
+    encode gzip
+    
+    log {
+        output stdout
+        format console
+    }
+}

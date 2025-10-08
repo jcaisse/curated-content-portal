@@ -1,0 +1,226 @@
+version: '3.8'
+
+name: clean-portal-production
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: clean-portal-db
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  migrate:
+    image: 284077920952.dkr.ecr.us-east-1.amazonaws.com/clean-portal:latest
+    container_name: clean-portal-migrate
+    user: "0:0"
+    environment:
+      # Database
+      - DATABASE_URL=${DATABASE_URL}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      
+      # NextAuth
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - AUTH_SECRET=${NEXTAUTH_SECRET}
+      
+      # Admin
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      
+      # Security
+      - ADMIN_INGEST_KEY=${ADMIN_INGEST_KEY}
+      - BCRYPT_ROUNDS=${BCRYPT_ROUNDS:-12}
+      - SESSION_MAX_AGE=${SESSION_MAX_AGE:-86400}
+      
+      # AI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - AI_DISABLED=${AI_DISABLED:-false}
+      
+      # App
+      - NODE_ENV=${NODE_ENV:-production}
+      - DOMAIN=${DOMAIN}
+      - EMAIL=${EMAIL}
+      - PORT=${PORT:-3000}
+      - APP_PORT=${APP_PORT:-3000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      
+      # Content
+      - RSS_FEED_URLS=${RSS_FEED_URLS:-}
+      - WEB_CRAWL_ENABLED=${WEB_CRAWL_ENABLED:-true}
+      - CRAWL_INTERVAL_HOURS=${CRAWL_INTERVAL_HOURS:-24}
+      - MAX_CRAWL_ITEMS_PER_RUN=${MAX_CRAWL_ITEMS_PER_RUN:-100}
+      - CONTENT_REVIEW_THRESHOLD=${CONTENT_REVIEW_THRESHOLD:-0.7}
+      - AUTO_PUBLISH_ENABLED=${AUTO_PUBLISH_ENABLED:-false}
+      - FILE_STORAGE_STRATEGY=${FILE_STORAGE_STRATEGY:-url_only}
+      
+      # Analytics
+      - ANALYTICS_ENABLED=${ANALYTICS_ENABLED:-false}
+      - GOOGLE_ANALYTICS_ID=${GOOGLE_ANALYTICS_ID:-}
+      
+      # Rate Limiting
+      - RATE_LIMIT_REQUESTS_PER_MINUTE=${RATE_LIMIT_REQUESTS_PER_MINUTE:-60}
+      - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}
+      
+      # Redis
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      /bin/sh -c "
+        echo '=== Starting Migration Process ===' &&
+        echo 'Waiting for database to be fully ready...' &&
+        sleep 5 &&
+        echo 'Running Prisma migrations...' &&
+        npx prisma migrate deploy &&
+        echo 'Running database seed...' &&
+        node prisma/seed.mjs &&
+        echo 'Running auth fingerprint check...' &&
+        node scripts/auth-fingerprint-check.mjs &&
+        echo 'Running database smoke test...' &&
+        node scripts/db-smoke.mjs &&
+        echo '=== Migration Process Completed Successfully ==='
+      "
+    restart: "no"
+    networks:
+      - portal-network
+
+  app:
+    image: 284077920952.dkr.ecr.us-east-1.amazonaws.com/clean-portal:latest
+    container_name: clean-portal-app
+    environment:
+      # Database
+      - DATABASE_URL=${DATABASE_URL}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      
+      # NextAuth
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - AUTH_SECRET=${NEXTAUTH_SECRET}
+      
+      # Admin
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      
+      # Security
+      - ADMIN_INGEST_KEY=${ADMIN_INGEST_KEY}
+      - BCRYPT_ROUNDS=${BCRYPT_ROUNDS:-12}
+      - SESSION_MAX_AGE=${SESSION_MAX_AGE:-86400}
+      
+      # AI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - AI_DISABLED=${AI_DISABLED:-false}
+      
+      # App
+      - NODE_ENV=${NODE_ENV:-production}
+      - DOMAIN=${DOMAIN}
+      - EMAIL=${EMAIL}
+      - PORT=${PORT:-3000}
+      - APP_PORT=${APP_PORT:-3000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - CRAWLEE_STORAGE_DIR=/tmp/crawlee-storage
+      
+      # Content
+      - RSS_FEED_URLS=${RSS_FEED_URLS:-}
+      - WEB_CRAWL_ENABLED=${WEB_CRAWL_ENABLED:-true}
+      - CRAWL_INTERVAL_HOURS=${CRAWL_INTERVAL_HOURS:-24}
+      - MAX_CRAWL_ITEMS_PER_RUN=${MAX_CRAWL_ITEMS_PER_RUN:-100}
+      - CONTENT_REVIEW_THRESHOLD=${CONTENT_REVIEW_THRESHOLD:-0.7}
+      - AUTO_PUBLISH_ENABLED=${AUTO_PUBLISH_ENABLED:-false}
+      - FILE_STORAGE_STRATEGY=${FILE_STORAGE_STRATEGY:-url_only}
+      
+      # Analytics
+      - ANALYTICS_ENABLED=${ANALYTICS_ENABLED:-false}
+      - GOOGLE_ANALYTICS_ID=${GOOGLE_ANALYTICS_ID:-}
+      
+      # Rate Limiting
+      - RATE_LIMIT_REQUESTS_PER_MINUTE=${RATE_LIMIT_REQUESTS_PER_MINUTE:-60}
+      - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}
+      
+      # Redis
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: clean-portal-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: clean-portal-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+volumes:
+  db-data:
+    driver: local
+  redis_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+networks:
+  portal-network:
+    driver: bridge
+

@@ -132,3 +132,6 @@ dev.db
 
 # Prisma
 prisma/migrations/dev.db*
+
+# EC2 environment file with secrets
+.env.ec2

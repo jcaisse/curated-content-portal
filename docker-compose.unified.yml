@@ -1,0 +1,195 @@
+version: '3.8'
+
+name: clean-portal
+
+services:
+  # Production Database
+  db-prod:
+    image: pgvector/pgvector:pg16
+    container_name: clean-portal-db-prod
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_PROD}
+      POSTGRES_DB: curated_content_portal
+    volumes:
+      - db-data-prod:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d curated_content_portal"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  # Development Database
+  db-dev:
+    image: pgvector/pgvector:pg16
+    container_name: clean-portal-db-dev
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_DEV}
+      POSTGRES_DB: curated_content_portal_dev
+    volumes:
+      - db-data-dev:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d curated_content_portal_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  # Production Redis
+  redis-prod:
+    image: redis:7-alpine
+    container_name: clean-portal-redis-prod
+    volumes:
+      - redis-data-prod:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  # Development Redis
+  redis-dev:
+    image: redis:7-alpine
+    container_name: clean-portal-redis-dev
+    volumes:
+      - redis-data-dev:/data
+    ports:
+      - "6381:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  # Production App
+  app-prod:
+    image: node:20-alpine
+    container_name: clean-portal-app-prod
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD_PROD}@db-prod:5432/curated_content_portal?schema=public
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD_PROD}
+      - POSTGRES_DB=curated_content_portal
+      - POSTGRES_PORT=5432
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=https://portal.spoot.com
+      - ADMIN_EMAIL=admin@spoot.com
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_INGEST_KEY=${ADMIN_INGEST_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=gpt-4o-mini
+      - DOMAIN=portal.spoot.com
+      - EMAIL=noreply@spoot.com
+      - NODE_ENV=development
+      - PORT=3000
+    depends_on:
+      db-prod:
+        condition: service_healthy
+      redis-prod:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - ./src:/app/src:ro
+      - ./prisma:/app/prisma:ro
+      - ./public:/app/public:ro
+      - ./package.json:/app/package.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./next.config.js:/app/next.config.js:ro
+      - node-modules-prod:/app/node_modules
+    command: sh -c "apk add --no-cache openssl && npm install && npm run dev"
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  # Development App
+  app-dev:
+    image: node:20-alpine
+    container_name: clean-portal-app-dev
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD_DEV}@db-dev:5432/curated_content_portal_dev?schema=public
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD_DEV}
+      - POSTGRES_DB=curated_content_portal_dev
+      - POSTGRES_PORT=5432
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=https://dev.portal.spoot.com
+      - ADMIN_EMAIL=admin@spoot.com
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_INGEST_KEY=${ADMIN_INGEST_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=gpt-4o-mini
+      - DOMAIN=dev.portal.spoot.com
+      - EMAIL=noreply@spoot.com
+      - NODE_ENV=development
+      - PORT=3000
+    depends_on:
+      db-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - ./src:/app/src:ro
+      - ./prisma:/app/prisma:ro
+      - ./public:/app/public:ro
+      - ./package.json:/app/package.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./next.config.js:/app/next.config.js:ro
+      - node-modules-dev:/app/node_modules
+    command: sh -c "apk add --no-cache openssl && npm install && npm run dev"
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  # Unified Caddy (handles both domains)
+  caddy:
+    image: caddy:2-alpine
+    container_name: clean-portal-caddy
+    depends_on:
+      - app-prod
+      - app-dev
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile.unified:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+networks:
+  portal-network:
+    name: clean-portal-network
+    driver: bridge
+
+volumes:
+  db-data-prod:
+  db-data-dev:
+  redis-data-prod:
+  redis-data-dev:
+  caddy-data:
+  caddy-config:
+  node-modules-prod:
+  node-modules-dev:
+
