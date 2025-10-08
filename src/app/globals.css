@@ -24,6 +24,12 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
+
+    /* Corsoro Brand Colors - Beacons-inspired */
+    --corsoro-primary: 270 91% 65%;       /* Purple #8B5CF6 */
+    --corsoro-secondary: 330 81% 60%;     /* Pink/Magenta #EC4899 */
+    --corsoro-accent: 280 85% 75%;        /* Light Purple #C084FC */
+    --corsoro-dark: 260 40% 20%;          /* Deep Purple #2D1B4E */
   }
 
   .dark {
@@ -55,5 +61,66 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* Corsoro Gradients - Purple to Pink */
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--corsoro-primary)) 0%, hsl(var(--corsoro-secondary)) 100%);
+  }
+  
+  .gradient-accent {
+    background: linear-gradient(135deg, hsl(var(--corsoro-accent)) 0%, hsl(var(--corsoro-secondary)) 100%);
+  }
+  
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(var(--corsoro-primary)) 0%, hsl(var(--corsoro-secondary)) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Glassmorphism */
+  .glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .glass-dark {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+  }
+
+  /* Animated gradient background - Purple/Pink/Lavender */
+  .gradient-animate {
+    background: linear-gradient(-45deg, hsl(var(--corsoro-primary)), hsl(var(--corsoro-secondary)), hsl(var(--corsoro-accent)), hsl(var(--corsoro-primary)));
+    background-size: 400% 400%;
+    animation: gradient-shift 15s ease infinite;
+  }
+
+  @keyframes gradient-shift {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  /* Glow effects */
+  .glow-primary {
+    box-shadow: 0 0 20px hsla(var(--corsoro-primary) / 0.5);
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 20px hsla(var(--corsoro-accent) / 0.5);
   }
 }
