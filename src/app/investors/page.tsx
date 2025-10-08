@@ -128,9 +128,6 @@ export default function InvestorsPage() {
                 <p>
                   <strong className="text-foreground">The Opportunity:</strong> 100M+ aggregate social reach in pipeline. Conversations with 3 major studios, talent agencies, and large domain portfolio owners representing thousands of premium domains.
                 </p>
-                <p>
-                  <strong className="text-foreground">The Ask:</strong> $5M to accelerate platform development, partner onboarding, and domain acquisition. Target: 400M annual sessions by Year 3 with EBITDA breakeven and profitability.
-                </p>
               </div>
             </div>
           </div>
